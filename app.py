@@ -819,7 +819,7 @@ else:
             for p in performances:
                 with st.container():
                     st.markdown(f"### 🎪 {p['title']}")
-                    st.caption(생성일: {p['created_at']})
+                    st.caption(f"생성일: {p['created_at']}")
                     
                     # 해당 공연의 팀 매핑 정보 불러오기
                     p_teams_rows = get_performance_teams(p['id'])
