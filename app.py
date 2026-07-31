@@ -65,7 +65,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 초기 부원 명단 데이터 (본인 계정 강대현 임원진 1 설정 포함)
+# 초기 부원 명단 데이터 
 INITIAL_MEMBERS = [
     ("강대현", "전기전자공학부", "25", "기타", 0),
     ("강준", "전기전자공학부", "23", "베이스", 0),
@@ -590,7 +590,7 @@ st.markdown("""
     <div class="hertz-header">
         <h1 style="margin:0; font-size: 26px;">🎸 건국대학교 공과대학 밴드 HERTZ</h1>
         <p style="margin:5px 0 0 0; color: #ff8888; font-size: 14px;">
-            Official Instagram: <a href="https://instagram.com/ku.hertz" target="_blank" style="color: #ff9999;">@ku.hertz</a> | 세션 커스텀 연습 플레이어 & 게이미피케이션
+            Official Instagram: <a href="https://instagram.com/ku.hertz" target="_blank" style="color: #ff9999;">@ku.hertz</a> | 세션 커스텀 연습 플레이어
         </p>
     </div>
 """, unsafe_allow_html=True)
