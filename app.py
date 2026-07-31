@@ -304,7 +304,7 @@ def get_all_active_members():
     cursor.execute("SELECT * FROM members WHERE is_active = 1 ORDER BY name ASC")
     members = cursor.fetchall()
     conn.close()
-    return members
+    return [dict(m) for m in members]
 
 def get_all_members_including_inactive():
     conn = get_db_connection()
@@ -312,7 +312,7 @@ def get_all_members_including_inactive():
     cursor.execute("SELECT * FROM members ORDER BY is_active DESC, name ASC")
     members = cursor.fetchall()
     conn.close()
-    return members
+    return [dict(m) for m in members]
 
 def add_member(name, department, student_id, session, is_admin):
     conn = get_db_connection()
@@ -366,9 +366,10 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
         conn.close()
         return False, "부원 정보를 찾을 수 없습니다."
     
-    current_credits = row['credits']
-    inventory = row['inventory'] or ""
-    current_ensemble_stats = row['ensemble_stats'] or 0
+    row_dict = dict(row)
+    current_credits = row_dict.get('credits', 0)
+    inventory = row_dict.get('inventory', "") or ""
+    current_ensemble_stats = row_dict.get('ensemble_stats', 0) or 0
     items_list = [i.strip() for i in inventory.split(",") if i.strip()]
     
     if target_item_id in items_list:
@@ -387,7 +388,7 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
             conn.close()
             return False, f"이전 단계 아이템인 [{category_items[target_idx - 1]['name']}]을(를) 먼저 구매해야 합니다!"
 
-    # 합주 능력치 필요 조건 체크
+    # 합주 능력치 필요 조건 및 소모량 계산
     req_ensemble_stat = 0
     if cost == 3000:
         req_ensemble_stat = 1
@@ -396,14 +397,16 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
     elif cost >= 10000:
         req_ensemble_stat = 5
 
-    if current_ensemble_stats < req_ensemble_stat:
+    if current_credits < cost and current_ensemble_stats < req_ensemble_stat:
         conn.close()
-        return False, f"구매 실패: 합주 능력치가 {req_ensemble_stat}개 필요합니다. (현재 보유: {current_ensemble_stats}개)"
+        return False, f"크레딧({cost} C)과 합주 능력치({req_ensemble_stat}개)가 모두 부족합니다."
+    elif current_credits < cost:
+        conn.close()
+        return False, f"크레딧이 부족합니다. (필요: {cost} C / 보유: {current_credits} C)"
+    elif current_ensemble_stats < req_ensemble_stat:
+        conn.close()
+        return False, f"합주 능력치가 부족합니다. (필요: ⚡ {req_ensemble_stat}개 / 보유: ⚡ {current_ensemble_stats}개)"
 
-    if current_credits < cost:
-        conn.close()
-        return False, "크레딧이 부족합니다."
-        
     items_list.append(target_item_id)
     new_inventory = ",".join(items_list)
     new_credits = current_credits - cost
@@ -413,7 +416,7 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
                    (new_credits, new_inventory, new_ensemble_stats, member_id))
     conn.commit()
     conn.close()
-    return True, "구매가 완료되었습니다!"
+    return True, f"구매가 완료되었습니다! ({cost} C 차감, ⚡ 합주 능력치 {req_ensemble_stat}개 차감)"
 
 def save_project(member_id, song_title, separated_dir):
     conn = get_db_connection()
@@ -434,7 +437,7 @@ def get_member_projects(member_id):
     cursor.execute("SELECT * FROM projects WHERE member_id = ? ORDER BY id DESC", (member_id,))
     projects = cursor.fetchall()
     conn.close()
-    return projects
+    return [dict(p) for p in projects]
 
 def delete_project(project_id, member_id):
     conn = get_db_connection()
@@ -454,7 +457,7 @@ def get_all_performances():
     cursor.execute("SELECT * FROM performances ORDER BY id DESC")
     rows = cursor.fetchall()
     conn.close()
-    return rows
+    return [dict(r) for r in rows]
 
 def create_performance(title):
     conn = get_db_connection()
@@ -496,7 +499,7 @@ def get_performance_teams(perf_id):
     ''', (perf_id,))
     rows = cursor.fetchall()
     conn.close()
-    return rows
+    return [dict(r) for r in rows]
 
 def get_all_distinct_teams():
     conn = get_db_connection()
@@ -508,7 +511,7 @@ def get_all_distinct_teams():
     ''')
     teams = cursor.fetchall()
     conn.close()
-    return teams
+    return [dict(t) for t in teams]
 
 def get_members_by_team(team_name):
     conn = get_db_connection()
@@ -521,7 +524,7 @@ def get_members_by_team(team_name):
     ''', (team_name,))
     members = cursor.fetchall()
     conn.close()
-    return members
+    return [dict(m) for m in members]
 
 # --- 합주 DB 핸들러 ---
 
@@ -543,13 +546,12 @@ def get_all_ensembles():
     cursor.execute("SELECT * FROM ensembles ORDER BY id DESC")
     rows = cursor.fetchall()
     conn.close()
-    return rows
+    return [dict(r) for r in rows]
 
 def start_ensemble_db(ensemble_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     now_ts = time.time()
-    # 기존 진행 중인 합주 모두 중지 처리
     cursor.execute("UPDATE ensembles SET is_active = 0")
     cursor.execute("UPDATE ensembles SET is_active = 1, start_time = ? WHERE id = ?", (now_ts, ensemble_id))
     conn.commit()
@@ -921,7 +923,6 @@ else:
                     total_credits += item_cost
 
             gear_text = " | ".join(equipped_display) if equipped_display else "기본 장비 착용 중"
-            user_bio = member.get('bio') or "안녕하세요!"
             audience_count = max(3, min(120, 3 + (total_credits // 200)))
 
             # 타이머 상태 계산
@@ -1001,7 +1002,6 @@ else:
 
                 drawAmplifiers();
 
-                // 무대 위 멤버들 가로로 균등 배치
                 const numMembers = bandMembers.length;
                 const spacing = canvas.width / (numMembers + 1);
 
@@ -1141,7 +1141,7 @@ else:
         with sub_tab2:
             st.subheader("🛍️ 밴드 장비 및 패션 상점")
             st.markdown(f"보유 크레딧: **{member['credits']} C** | 보유 합주 능력치: **⚡ {member.get('ensemble_stats', 0)}개**")
-            st.info("💡 **상점 구매 조건:** 3,000 크레딧 아이템 = 합주 능력치 1개 소모 | 5,000 크레딧 = 3개 소모 | 10,000 크레딧 = 5개 소모")
+            st.info("💡 **상점 구매 조건:** 아이템 구매 시 해당 단계의 크레딧과 합주 능력치가 함께 소모됩니다.\n(3,000 C = 능력치 1개 소모 | 5,000 C = 3개 소모 | 10,000 C = 5개 소모)")
             
             shop_tabs = st.tabs(["🧢 모자", "옷", "👟 신발", "💍 장신구", "🎗️ MD", "🎸 세션별 악기 장비"])
             categories = ["모자", "옷", "신발", "장신구", "MD"]
@@ -1163,13 +1163,13 @@ else:
                             elif item['cost'] == 5000: req_stat = 3
                             elif item['cost'] >= 10000: req_stat = 5
 
-                            req_text = f" (필요 합주 능력치: {req_stat}개)" if req_stat > 0 else ""
+                            req_text = f" + ⚡ 능력치 {req_stat}개" if req_stat > 0 else ""
 
                             st.markdown(f"""
                                 <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
                                     <h4>{item['name']}</h4>
                                     <p style="color: #ccc; font-size: 13px; margin: 5px 0;">{item['desc']}</p>
-                                    <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">가격: {item['cost']} C{req_text}</p>
+                                    <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">소모 재화: {item['cost']} C{req_text}</p>
                                 </div>
                             """, unsafe_allow_html=True)
                             
@@ -1204,13 +1204,13 @@ else:
                         elif item['cost'] == 5000: req_stat = 3
                         elif item['cost'] >= 10000: req_stat = 5
 
-                        req_text = f" (필요 합주 능력치: {req_stat}개)" if req_stat > 0 else ""
+                        req_text = f" + ⚡ 능력치 {req_stat}개" if req_stat > 0 else ""
 
                         st.markdown(f"""
                             <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
                                 <h4>{item['name']}</h4>
                                 <p style="color: #ccc; font-size: 13px; margin: 5px 0;">{item['desc']}</p>
-                                <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">가격: {item['cost']} C{req_text}</p>
+                                <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">소모 재화: {item['cost']} C{req_text}</p>
                             </div>
                         """, unsafe_allow_html=True)
                         
@@ -1253,7 +1253,6 @@ else:
 
         active_ens = get_active_ensemble()
 
-        # 현재 진행 중인 합주가 있다면 상단 안내
         if active_ens and active_ens['is_active'] == 1:
             st.markdown(f"""
                 <div style="background: #2b0505; border: 2px solid #FF2222; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
@@ -1270,7 +1269,6 @@ else:
         st.markdown("---")
         st.subheader("➕ 새 합주 개설하기")
 
-        # 기존 생성된 팀 목록 불러오기
         distinct_teams = get_all_distinct_teams()
 
         if not distinct_teams:
@@ -1330,13 +1328,14 @@ else:
         display_members = get_all_active_members() if filter_opt == "활동 중인 부원만" else get_all_members_including_inactive()
 
         for m in display_members:
-            m_items = [i.strip() for i in (m['inventory'] or "").split(",") if i.strip()]
-            m_time = m['practice_minutes']
+            m_items = [i.strip() for i in (m.get('inventory') or "").split(",") if i.strip()]
+            m_time = m.get('practice_minutes', 0)
             m_title = get_title_by_practice_time(m_time)
-            m_bio = m['bio'] or "안녕하세요!"
+            m_bio = m.get('bio') or "안녕하세요!"
+            m_stats = m.get('ensemble_stats', 0)
             
             session_emojis = {"기타": "🎸💥", "베이스": "🎸🔥", "보컬": "🎤✨", "드럼": "🥁💥", "키보드": "🎹🎶"}
-            m_icon = session_emojis.get(m['session'], "🎶")
+            m_icon = session_emojis.get(m.get('session'), "🎶")
 
             m_gear_names = []
             for mi in m_items:
@@ -1344,14 +1343,14 @@ else:
                 if match_obj: m_gear_names.append(match_obj['name'])
             m_gear_str = " | ".join(m_gear_names) if m_gear_names else "기본 장비 착용 중"
 
-            status_badge = "🟢 활동 중" if m['is_active'] == 1 else "⚪ [탈퇴/보존]"
-            admin_icon = "👑 " if m['is_admin'] == 1 else ""
+            status_badge = "🟢 활동 중" if m.get('is_active') == 1 else "⚪ [탈퇴/보존]"
+            admin_icon = "👑 " if m.get('is_admin') == 1 else ""
 
             st.markdown(f"""
                 <div style="background: #141414; padding: 20px; border-radius: 10px; border: 1px solid #333; margin-bottom: 15px;">
-                    <h3>{admin_icon}{m['name']} <span style="font-size: 14px; color: #888;">({m['department']} / {m['student_id']}학번 / {m['session']})</span> {status_badge}</h3>
-                    <p style="color: #ff6666; font-size: 14px; margin: 5px 0;"><b>칭호:</b> {m_title} | 연습시간: <b>{m_time}분</b> | ⚡ 합주 능력치: <b>{m.get('ensemble_stats', 0)}개</b></p>
-                    <p style="font-style: italic; color: #ddd; background: #202020; padding: 6px 12px; border-radius: 6px; display: inline-block;">"{m_bio}"</p>
+                    <h3 style="margin-top:0;">{admin_icon}{m['name']} <span style="font-size: 14px; color: #888;">({m['department']} / {m['student_id']}학번 / {m['session']})</span> {status_badge}</h3>
+                    <p style="color: #ff6666; font-size: 14px; margin: 5px 0;"><b>칭호:</b> {m_title} | 연습시간: <b>{m_time}분</b> | ⚡ 합주 능력치: <b>{m_stats}개</b></p>
+                    <p style="font-style: italic; color: #ddd; background: #202020; padding: 6px 12px; border-radius: 6px; display: inline-block; margin: 5px 0;">"{m_bio}"</p>
                     <p style="font-size: 32px; margin: 10px 0;">{m_icon}</p>
                     <p style="color: #aaa; font-size: 13px; margin: 0;"><b>착용 장비:</b> {m_gear_str}</p>
                 </div>
