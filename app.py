@@ -1070,7 +1070,7 @@ else:
                     ctx.fillStyle = sessionType === "기타" ? '#FF2222' : '#00fff5';
                     ctx.fillRect(cx - 12, cy - 2, 10, 8);
                     ctx.fillStyle = '#8d5524';
-                    ctx.fillRect(cx - 3, cy - 5, 10, 3);
+                    ctx.fillRect(cx - 3, cy - 2, 18, 3);
                 }} else if (sessionType === "드럼") {{
                     ctx.fillStyle = '#f5abc9';
                     ctx.beginPath();
