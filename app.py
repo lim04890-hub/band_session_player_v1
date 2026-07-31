@@ -4,7 +4,6 @@ import os
 import shutil
 import sys
 import sqlite3
-import hashlib
 import uuid
 from datetime import datetime
 import imageio_ffmpeg
@@ -13,15 +12,47 @@ import imageio_ffmpeg
 UPLOAD_DIR = "uploaded_audio"
 OUTPUT_DIR = "separated_audio"
 PROCESSED_DIR = "processed_audio"
-DB_FILE = "app_data.db"
+DB_FILE = "hertz_app_data.db"
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-st.set_page_config(page_title="Session Master", page_icon="🎸", layout="centered")
+# 페이지 설정 및 HERTZ 맞춤형 CSS (블랙 & 레드 컨셉)
+st.set_page_config(page_title="HERTZ Session Master", page_icon="🎸", layout="centered")
 
-# --- 데이터베이스 (SQLite) 안정성 강화 연동 로직 ---
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #0b0b0b;
+        color: #e0e0e0;
+    }
+    h1, h2, h3 {
+        color: #ffffff !important;
+        font-family: 'Helvetica Neue', sans-serif;
+    }
+    .hertz-header {
+        background: linear-gradient(90deg, #1a1a1a 0%, #2b0505 100%);
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 6px solid #FF2222;
+        margin-bottom: 25px;
+    }
+    .stButton>button {
+        background-color: #FF2222;
+        color: white;
+        border-radius: 6px;
+        border: none;
+        font-weight: bold;
+    }
+    .stButton>button:hover {
+        background-color: #cc1b1b;
+        color: white;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 데이터베이스 설정 ---
 
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE, timeout=30)
@@ -34,20 +65,22 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
+            CREATE TABLE IF NOT EXISTS members (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL
+                name TEXT NOT NULL,
+                session TEXT NOT NULL,
+                department TEXT NOT NULL,
+                UNIQUE(name, session, department)
             )
         ''')
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
+                member_id INTEGER NOT NULL,
                 song_title TEXT NOT NULL,
                 separated_dir TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users (id)
+                FOREIGN KEY (member_id) REFERENCES members (id)
             )
         ''')
         conn.commit()
@@ -55,66 +88,56 @@ def init_db():
     except Exception as e:
         st.error(f"데이터베이스 초기화 오류: {e}")
 
-def hash_password(password):
-    cleaned_pw = str(password).strip()
-    return hashlib.sha256(cleaned_pw.encode('utf-8')).hexdigest()
-
-def register_user(username, password):
+def login_or_register_member(name, session, department):
     conn = get_db_connection()
     cursor = conn.cursor()
-    clean_username = str(username).strip()
-    try:
-        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", 
-                       (clean_username, hash_password(password)))
+    clean_name = str(name).strip()
+    
+    cursor.execute("SELECT * FROM members WHERE name = ? AND session = ? AND department = ?", 
+                   (clean_name, session, department))
+    member = cursor.fetchone()
+    
+    if not member:
+        cursor.execute("INSERT INTO members (name, session, department) VALUES (?, ?, ?)", 
+                       (clean_name, session, department))
         conn.commit()
-        return True, "회원가입이 완료되었습니다. 로그인 해주세요."
-    except sqlite3.IntegrityError:
-        return False, "이미 존재하는 아이디입니다."
-    except Exception as e:
-        return False, f"오류 발생: {e}"
-    finally:
-        conn.close()
-
-def login_user(username, password):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    clean_username = str(username).strip()
-    cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", 
-                   (clean_username, hash_password(password)))
-    user = cursor.fetchone()
+        cursor.execute("SELECT * FROM members WHERE name = ? AND session = ? AND department = ?", 
+                       (clean_name, session, department))
+        member = cursor.fetchone()
+        
     conn.close()
-    return user
+    return dict(member)
 
-def save_project(user_id, song_title, separated_dir):
+def save_project(member_id, song_title, separated_dir):
     conn = get_db_connection()
     cursor = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
-        "INSERT INTO projects (user_id, song_title, separated_dir, created_at) VALUES (?, ?, ?, ?)",
-        (user_id, song_title, separated_dir, now)
+        "INSERT INTO projects (member_id, song_title, separated_dir, created_at) VALUES (?, ?, ?, ?)",
+        (member_id, song_title, separated_dir, now)
     )
     project_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return project_id
 
-def get_user_projects(user_id):
+def get_member_projects(member_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM projects WHERE user_id = ? ORDER BY id DESC", (user_id,))
+    cursor.execute("SELECT * FROM projects WHERE member_id = ? ORDER BY id DESC", (member_id,))
     projects = cursor.fetchall()
     conn.close()
     return projects
 
-def delete_project(project_id, user_id):
+def delete_project(project_id, member_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT separated_dir FROM projects WHERE id = ? AND user_id = ?", (project_id, user_id))
+    cursor.execute("SELECT separated_dir FROM projects WHERE id = ? AND member_id = ?", (project_id, member_id))
     row = cursor.fetchone()
     if row and row['separated_dir'] and os.path.exists(row['separated_dir']):
         shutil.rmtree(row['separated_dir'], ignore_errors=True)
         
-    cursor.execute("DELETE FROM projects WHERE id = ? AND user_id = ?", (project_id, user_id))
+    cursor.execute("DELETE FROM projects WHERE id = ? AND member_id = ?", (project_id, member_id))
     conn.commit()
     conn.close()
 
@@ -199,8 +222,8 @@ def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
 
 
 # --- 세션 상태 관리 ---
-if 'user' not in st.session_state:
-    st.session_state['user'] = None
+if 'member' not in st.session_state:
+    st.session_state['member'] = None
 if 'view' not in st.session_state:
     st.session_state['view'] = 'dashboard'
 if 'current_project' not in st.session_state:
@@ -208,74 +231,73 @@ if 'current_project' not in st.session_state:
 
 
 # --- UI 레이아웃 ---
-if st.session_state['user'] is None:
-    st.title("🎸 세션 커스텀 플레이어")
-    st.subheader("로그인 후 작업물들을 관리하세요.")
+
+st.markdown("""
+    <div class="hertz-header">
+        <h1 style="margin:0; font-size: 26px;">🎸 건국대학교 공과대학 밴드 HERTZ</h1>
+        <p style="margin:5px 0 0 0; color: #ff8888; font-size: 14px;">
+            Official Instagram: <a href="https://instagram.com/ku.hertz" target="_blank" style="color: #ff9999;">@ku.hertz</a> | 세션 커스텀 연습 플레이어
+        </p>
+    </div>
+""", unsafe_allow_html=True)
+
+if st.session_state['member'] is None:
+    st.subheader("⚡ 부원 인증 로그인")
+    st.caption("부원 명단 정보(이름, 세션, 학과)를 입력하여 접속해주세요.")
     
-    tab1, tab2 = st.tabs(["로그인", "회원가입"])
-    
-    with tab1:
-        login_id = st.text_input("아이디", key="login_id")
-        login_pw = st.text_input("비밀번호", type="password", key="login_pw")
-        if st.button("로그인", type="primary", use_container_width=True):
-            user = login_user(login_id, login_pw)
-            if user:
-                st.session_state['user'] = dict(user)
+    with st.form("login_form"):
+        input_name = st.text_input("이름")
+        input_session = st.selectbox("세션", ["Vocal", "Electric Guitar", "Acoustic Guitar", "Bass", "Drum", "Keyboard", "Synthesizer", "Other"])
+        input_dept = st.text_input("학과 (예: 기계공학부, 컴퓨터공학전공 등)")
+        
+        submit_btn = st.form_submit_button("입장하기 🚀", use_container_width=True)
+        
+        if submit_btn:
+            if input_name.strip() and input_dept.strip():
+                member_info = login_or_register_member(input_name, input_session, input_dept)
+                st.session_state['member'] = member_info
                 st.session_state['view'] = 'dashboard'
                 st.rerun()
             else:
-                st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
-                
-    with tab2:
-        reg_id = st.text_input("사용할 아이디", key="reg_id")
-        reg_pw = st.text_input("사용할 비밀번호", type="password", key="reg_pw")
-        if st.button("회원가입 완료", use_container_width=True):
-            if reg_id and reg_pw:
-                success, msg = register_user(reg_id, reg_pw)
-                if success:
-                    st.success(msg)
-                else:
-                    st.error(msg)
-            else:
-                st.warning("아이디와 비밀번호를 모두 입력해주세요.")
+                st.warning("이름과 학과를 정확히 입력해주세요.")
 
 else:
-    user_info = st.session_state['user']
+    member_info = st.session_state['member']
     top_col1, top_col2 = st.columns([3, 1])
     with top_col1:
-        st.caption(f"👤 **{user_info['username']}** 님 환영합니다.")
+        st.markdown(f"🔥 **{member_info['name']}** 님 (`{member_info['session']}` / `{member_info['department']}`) 환영합니다!")
     with top_col2:
         if st.button("로그아웃"):
-            st.session_state['user'] = None
+            st.session_state['member'] = None
             st.session_state['view'] = 'dashboard'
             st.session_state['current_project'] = None
             st.rerun()
 
     if st.session_state['view'] == 'dashboard':
-        st.title("📂 내 작업물 목록")
-        projects = get_user_projects(user_info['id'])
+        st.title("📂 내 연습 작업물 목록")
+        projects = get_member_projects(member_info['id'])
         
         if not projects:
-            st.info("저장된 작업물이 없습니다. 아래 '+' 버튼을 눌러 새로운 음원을 추가해보세요!")
+            st.info("저장된 곡이 없습니다. 아래 버튼을 눌러 합주곡을 추가해보세요!")
         else:
             for p in projects:
                 with st.container():
                     col_info, col_btn, col_del = st.columns([4, 1.5, 1])
                     with col_info:
                         st.markdown(f"### 🎵 {p['song_title']}")
-                        st.caption(f"작성일: {p['created_at']}")
+                        st.caption(f"등록일: {p['created_at']}")
                     with col_btn:
-                        if st.button("열기 ▶️", key=f"open_{p['id']}", use_container_width=True):
+                        if st.button("플레이어 열기 ▶️", key=f"open_{p['id']}", use_container_width=True):
                             st.session_state['current_project'] = dict(p)
                             st.session_state['view'] = 'project_detail'
                             st.rerun()
                     with col_del:
                         if st.button("삭제 🗑️", key=f"del_{p['id']}", use_container_width=True):
-                            delete_project(p['id'], user_info['id'])
+                            delete_project(p['id'], member_info['id'])
                             st.rerun()
                     st.markdown("---")
 
-        if st.button("➕ 새 작업물 추가", type="primary", use_container_width=True):
+        if st.button("➕ 새 합주곡 세션 분리하기", type="primary", use_container_width=True):
             st.session_state['view'] = 'new_project'
             st.rerun()
 
@@ -284,8 +306,8 @@ else:
             st.session_state['view'] = 'dashboard'
             st.rerun()
 
-        st.title("➕ 새 음원 작업 추가")
-        uploaded_file = st.file_uploader("음악 파일 업로드 (MP3, WAV)", type=["mp3", "wav"])
+        st.title("➕ 새 합주곡 추가")
+        uploaded_file = st.file_uploader("합주 연습용 오디오 파일 업로드 (MP3, WAV)", type=["mp3", "wav"])
         
         if uploaded_file is not None:
             file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
@@ -293,11 +315,11 @@ else:
                 f.write(uploaded_file.getbuffer())
 
             if st.button("🚀 AI 세션 분리 및 저장 시작", type="primary", use_container_width=True):
-                with st.spinner("AI 모델이 곡의 세션(기타, 보컬, 드럼 등)을 분리하는 중입니다... (잠시 소요)"):
+                with st.spinner("AI가 곡의 6개 세션(기타, 보컬, 드럼, 베이스, 피아노, 기타 등)을 분리하는 중입니다..."):
                     try:
                         separated_dir = separate_audio(file_path, uploaded_file.name)
                         song_title = os.path.splitext(uploaded_file.name)[0]
-                        project_id = save_project(user_info['id'], song_title, separated_dir)
+                        project_id = save_project(member_info['id'], song_title, separated_dir)
                         
                         st.success("세션 분리 완료!")
                         st.session_state['current_project'] = {
@@ -319,7 +341,7 @@ else:
         separated_dir = project['separated_dir']
 
         st.title(f"🎵 {project['song_title']}")
-        st.subheader("🎛️ 세션 믹서 & 트랙 제어")
+        st.subheader("🎛️ HERTZ 세션 커스텀 믹서")
 
         all_stems = ["guitar", "vocals", "drums", "bass", "piano", "other"]
         stem_labels = {
@@ -335,10 +357,10 @@ else:
             if col.checkbox(stem_labels[stem], value=default_val, key=f"chk_p_{stem}"):
                 selected_stems.append(stem)
 
-        st.markdown("#### ⚡ 재생 옵션")
+        st.markdown("#### ⚡ 재생 및 연습 옵션")
         col_spd, col_s, col_e = st.columns([1, 1, 1])
         with col_spd:
-            speed = st.slider("재생 속도", 0.5, 2.0, 1.0, 0.1)
+            speed = st.slider("재생 속도 (카피 연습용)", 0.5, 2.0, 1.0, 0.1)
         with col_s:
             start_time = st.number_input("시작 구간 (초)", min_value=0, value=0)
         with col_e:
@@ -347,18 +369,18 @@ else:
         st.markdown("---")
 
         if selected_stems:
-            with st.spinner("선택한 세션 믹싱 중..."):
+            with st.spinner("커스텀 트랙 믹싱 중..."):
                 mixed_audio_path = process_mix(separated_dir, selected_stems, speed, start_time, end_time)
 
             if mixed_audio_path and os.path.exists(mixed_audio_path):
-                st.subheader("▶️ 커스텀 트랙 재생")
+                st.subheader("▶️ 커스텀 합주 트랙 재생")
                 st.audio(mixed_audio_path, format="audio/wav")
 
                 with open(mixed_audio_path, "rb") as f:
                     st.download_button(
-                        label=f"📥 선택한 세션 합친 음원 다운로드 ({len(selected_stems)}개 세션 조합)",
+                        label=f"📥 조합된 연습용 음원 다운로드 ({len(selected_stems)}개 세션 조합)",
                         data=f,
-                        file_name=f"{project['song_title']}_mix.wav",
+                        file_name=f"{project['song_title']}_HERTZ_mix.wav",
                         mime="audio/wav",
                         type="primary",
                         use_container_width=True
