@@ -52,7 +52,51 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 데이터베이스 설정 ---
+# --- HERTZ 공식 부원 명단 데이터 (이름, 학과, 학번, 세션) ---
+HERTZ_MEMBERS = [
+    {"name": "강대현", "department": "전기전자공학부", "student_id": "25", "session": "기타"},
+    {"name": "강준", "department": "전기전자공학부", "student_id": "23", "session": "베이스"},
+    {"name": "권도영", "department": "컴퓨터공학부", "student_id": "24", "session": "보컬"},
+    {"name": "권찬우", "department": "항공우주모빌리티공학과", "student_id": "25", "session": "베이스"},
+    {"name": "김다혜", "department": "화공생명에너지학부", "student_id": "26", "session": "키보드"},
+    {"name": "김마루", "department": "컴퓨터공학부", "student_id": "24", "session": "기타"},
+    {"name": "김민재", "department": "전기전자공학부", "student_id": "25", "session": "기타"},
+    {"name": "김서윤", "department": "환경보건과학과", "student_id": "25", "session": "드럼"},
+    {"name": "김수민", "department": "화학공학부", "student_id": "23", "session": "베이스"},
+    {"name": "김준홍", "department": "화학공학부", "student_id": "23", "session": "기타"},
+    {"name": "남성진", "department": "화학공학부", "student_id": "23", "session": "기타"},
+    {"name": "노시영", "department": "생물공학과", "student_id": "25", "session": "드럼"},
+    {"name": "박서진", "department": "전기전자공학부", "student_id": "25", "session": "보컬"},
+    {"name": "박유찬", "department": "항공우주모빌리티공학과", "student_id": "25", "session": "키보드"},
+    {"name": "박주용", "department": "재료공학과", "student_id": "23", "session": "기타"},
+    {"name": "박현준", "department": "산업공학과", "student_id": "26", "session": "보컬"},
+    {"name": "백찬민", "department": "사회환경공학부", "student_id": "24", "session": "드럼"},
+    {"name": "변지우", "department": "생물공학과", "student_id": "24", "session": "기타"},
+    {"name": "변지은", "department": "화학공학부", "student_id": "22", "session": "기타"},
+    {"name": "손예원", "department": "행정학과", "student_id": "22", "session": "보컬"},
+    {"name": "송종민", "department": "전기전자공학부", "student_id": "21", "session": "기타"},
+    {"name": "심재형", "department": "산림조경전공 (항공우주모빌리티공학과)", "student_id": "25", "session": "기타"},
+    {"name": "유병욱", "department": "화학공학부", "student_id": "23", "session": "기타"},
+    {"name": "유선호", "department": "화학공학부", "student_id": "23", "session": "키보드"},
+    {"name": "유시아", "department": "사회환경공학부", "student_id": "24", "session": "보컬"},
+    {"name": "이승원", "department": "생물공학과", "student_id": "21", "session": "키보드"},
+    {"name": "임승우", "department": "화학공학부", "student_id": "23", "session": "기타"},
+    {"name": "임형준", "department": "공과대학자유전공학부", "student_id": "26", "session": "기타"},
+    {"name": "장호준", "department": "생물공학과", "student_id": "25", "session": "드럼"},
+    {"name": "정지호", "department": "전기전자공학부", "student_id": "23", "session": "기타"},
+    {"name": "조제희", "department": "기계항공공학부", "student_id": "20", "session": "보컬"},
+    {"name": "조혜성", "department": "기계로봇자동차공학부", "student_id": "26", "session": "키보드"},
+    {"name": "천현승", "department": "일어교육과", "student_id": "21", "session": "보컬"},
+    {"name": "최아현", "department": "동물자원과학과", "student_id": "22", "session": "보컬"},
+    {"name": "최우혁", "department": "항공우주모빌리티공학과", "student_id": "26", "session": "드럼"},
+    {"name": "최준호", "department": "전기전자공학과", "student_id": "26", "session": "기타"},
+    {"name": "최준희", "department": "전기전자공학부", "student_id": "21", "session": "베이스"},
+    {"name": "하은지", "department": "전기전자공학부", "student_id": "23", "session": "드럼"},
+    {"name": "한호림", "department": "전기전지공학부", "student_id": "26", "session": "베이스"},
+    {"name": "허승범", "department": "전기전자공학부", "student_id": "23", "session": "보컬"}
+]
+
+# --- 데이터베이스 설정 (프로젝트 관리용) ---
 
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE, timeout=30)
@@ -65,22 +109,12 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS members (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                session TEXT NOT NULL,
-                department TEXT NOT NULL,
-                UNIQUE(name, session, department)
-            )
-        ''')
-        cursor.execute('''
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                member_id INTEGER NOT NULL,
+                member_key TEXT NOT NULL,
                 song_title TEXT NOT NULL,
                 separated_dir TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (member_id) REFERENCES members (id)
+                created_at TEXT NOT NULL
             )
         ''')
         conn.commit()
@@ -88,56 +122,51 @@ def init_db():
     except Exception as e:
         st.error(f"데이터베이스 초기화 오류: {e}")
 
-def login_or_register_member(name, session, department):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    clean_name = str(name).strip()
+def verify_member(name, department, student_id, session):
+    """입력된 정보가 명단과 정확히 일치하는지 검증"""
+    clean_name = name.strip()
+    clean_dept = department.strip()
+    clean_id = str(student_id).strip()
     
-    cursor.execute("SELECT * FROM members WHERE name = ? AND session = ? AND department = ?", 
-                   (clean_name, session, department))
-    member = cursor.fetchone()
-    
-    if not member:
-        cursor.execute("INSERT INTO members (name, session, department) VALUES (?, ?, ?)", 
-                       (clean_name, session, department))
-        conn.commit()
-        cursor.execute("SELECT * FROM members WHERE name = ? AND session = ? AND department = ?", 
-                       (clean_name, session, department))
-        member = cursor.fetchone()
-        
-    conn.close()
-    return dict(member)
+    for m in HERTZ_MEMBERS:
+        if (m["name"] == clean_name and 
+            m["department"] == clean_dept and 
+            m["student_id"] == clean_id and 
+            m["session"] == session):
+            # 고유 식별키 생성 (동명이인 완벽 분리)
+            return f"{m['name']}_{m['department']}_{m['student_id']}"
+    return None
 
-def save_project(member_id, song_title, separated_dir):
+def save_project(member_key, song_title, separated_dir):
     conn = get_db_connection()
     cursor = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
-        "INSERT INTO projects (member_id, song_title, separated_dir, created_at) VALUES (?, ?, ?, ?)",
-        (member_id, song_title, separated_dir, now)
+        "INSERT INTO projects (member_key, song_title, separated_dir, created_at) VALUES (?, ?, ?, ?)",
+        (member_key, song_title, separated_dir, now)
     )
     project_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return project_id
 
-def get_member_projects(member_id):
+def get_member_projects(member_key):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM projects WHERE member_id = ? ORDER BY id DESC", (member_id,))
+    cursor.execute("SELECT * FROM projects WHERE member_key = ? ORDER BY id DESC", (member_key,))
     projects = cursor.fetchall()
     conn.close()
     return projects
 
-def delete_project(project_id, member_id):
+def delete_project(project_id, member_key):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT separated_dir FROM projects WHERE id = ? AND member_id = ?", (project_id, member_id))
+    cursor.execute("SELECT separated_dir FROM projects WHERE id = ? AND member_key = ?", (project_id, member_key))
     row = cursor.fetchone()
     if row and row['separated_dir'] and os.path.exists(row['separated_dir']):
         shutil.rmtree(row['separated_dir'], ignore_errors=True)
         
-    cursor.execute("DELETE FROM projects WHERE id = ? AND member_id = ?", (project_id, member_id))
+    cursor.execute("DELETE FROM projects WHERE id = ? AND member_key = ?", (project_id, member_key))
     conn.commit()
     conn.close()
 
@@ -222,8 +251,10 @@ def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
 
 
 # --- 세션 상태 관리 ---
-if 'member' not in st.session_state:
-    st.session_state['member'] = None
+if 'member_key' not in st.session_state:
+    st.session_state['member_key'] = None
+if 'member_info' not in st.session_state:
+    st.session_state['member_info'] = None
 if 'view' not in st.session_state:
     st.session_state['view'] = 'dashboard'
 if 'current_project' not in st.session_state:
@@ -241,41 +272,50 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-if st.session_state['member'] is None:
-    st.subheader("⚡ 부원 인증 로그인")
-    st.caption("부원 명단 정보(이름, 세션, 학과)를 입력하여 접속해주세요.")
+if st.session_state['member_key'] is None:
+    st.subheader("⚡ HERTZ 정식 부원 인증 로그인")
+    st.caption("등록된 명단(이름, 학과, 학번, 세션)과 완벽하게 일치해야 로그인이 가능합니다.")
     
     with st.form("login_form"):
         input_name = st.text_input("이름")
-        input_session = st.selectbox("세션", ["Vocal", "Electric Guitar", "Acoustic Guitar", "Bass", "Drum", "Keyboard", "Synthesizer", "Other"])
-        input_dept = st.text_input("학과 (예: 기계공학부, 컴퓨터공학전공 등)")
+        input_dept = st.text_input("학과 (예: 전기전자공학부, 컴퓨터공학부 등)")
+        input_id = st.text_input("학번 두 자리 (예: 21, 23, 25 등)")
+        input_session = st.selectbox("세션", ["보컬", "기타", "베이스", "드럼", "키보드"])
         
-        submit_btn = st.form_submit_button("입장하기 🚀", use_container_width=True)
+        submit_btn = st.form_submit_button("인증 및 입장하기 🚀", use_container_width=True)
         
         if submit_btn:
-            if input_name.strip() and input_dept.strip():
-                member_info = login_or_register_member(input_name, input_session, input_dept)
-                st.session_state['member'] = member_info
+            matched_key = verify_member(input_name, input_dept, input_id, input_session)
+            if matched_key:
+                st.session_state['member_key'] = matched_key
+                st.session_state['member_info'] = {
+                    "name": input_name.strip(),
+                    "department": input_dept.strip(),
+                    "student_id": input_id.strip(),
+                    "session": input_session
+                }
                 st.session_state['view'] = 'dashboard'
+                st.success("인증 성공!")
                 st.rerun()
             else:
-                st.warning("이름과 학과를 정확히 입력해주세요.")
+                st.error("❌ 등록된 HERTZ 부원 정보와 일치하지 않습니다. 이름, 학과, 학번, 세션을 다시 확인해주세요.")
 
 else:
-    member_info = st.session_state['member']
+    info = st.session_state['member_info']
     top_col1, top_col2 = st.columns([3, 1])
     with top_col1:
-        st.markdown(f"🔥 **{member_info['name']}** 님 (`{member_info['session']}` / `{member_info['department']}`) 환영합니다!")
+        st.markdown(f"🔥 **{info['name']}** 님 (`{info['department']}` / {info['student_id']}학번 / `{info['session']}`) 환영합니다!")
     with top_col2:
         if st.button("로그아웃"):
-            st.session_state['member'] = None
+            st.session_state['member_key'] = None
+            st.session_state['member_info'] = None
             st.session_state['view'] = 'dashboard'
             st.session_state['current_project'] = None
             st.rerun()
 
     if st.session_state['view'] == 'dashboard':
         st.title("📂 내 연습 작업물 목록")
-        projects = get_member_projects(member_info['id'])
+        projects = get_member_projects(st.session_state['member_key'])
         
         if not projects:
             st.info("저장된 곡이 없습니다. 아래 버튼을 눌러 합주곡을 추가해보세요!")
@@ -293,7 +333,7 @@ else:
                             st.rerun()
                     with col_del:
                         if st.button("삭제 🗑️", key=f"del_{p['id']}", use_container_width=True):
-                            delete_project(p['id'], member_info['id'])
+                            delete_project(p['id'], st.session_state['member_key'])
                             st.rerun()
                     st.markdown("---")
 
@@ -319,7 +359,7 @@ else:
                     try:
                         separated_dir = separate_audio(file_path, uploaded_file.name)
                         song_title = os.path.splitext(uploaded_file.name)[0]
-                        project_id = save_project(member_info['id'], song_title, separated_dir)
+                        project_id = save_project(st.session_state['member_key'], song_title, separated_dir)
                         
                         st.success("세션 분리 완료!")
                         st.session_state['current_project'] = {
