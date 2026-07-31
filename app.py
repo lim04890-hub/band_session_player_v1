@@ -21,35 +21,40 @@ os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 st.set_page_config(page_title="Session Master", page_icon="🎸", layout="centered")
 
-# --- 데이터베이스 (SQLite) 연동 로직 ---
+# --- 데이터베이스 (SQLite) 안정성 강화 연동 로직 ---
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    # 동시 접속 잠금(Database Locked) 방지를 위해 timeout을 30초로 늘리고 WAL 모드 적용
+    conn = sqlite3.connect(DB_FILE, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
 def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS projects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            song_title TEXT NOT NULL,
-            separated_dir TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                song_title TEXT NOT NULL,
+                separated_dir TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        st.error(f"데이터베이스 초기화 오류: {e}")
 
 def hash_password(password):
     cleaned_pw = str(password).strip()
@@ -66,6 +71,8 @@ def register_user(username, password):
         return True, "회원가입이 완료되었습니다. 로그인 해주세요."
     except sqlite3.IntegrityError:
         return False, "이미 존재하는 아이디입니다."
+    except Exception as e:
+        return False, f"오류 발생: {e}"
     finally:
         conn.close()
 
@@ -105,7 +112,7 @@ def delete_project(project_id, user_id):
     cursor = conn.cursor()
     cursor.execute("SELECT separated_dir FROM projects WHERE id = ? AND user_id = ?", (project_id, user_id))
     row = cursor.fetchone()
-    if row and os.path.exists(row['separated_dir']):
+    if row and row['separated_dir'] and os.path.exists(row['separated_dir']):
         shutil.rmtree(row['separated_dir'], ignore_errors=True)
         
     cursor.execute("DELETE FROM projects WHERE id = ? AND user_id = ?", (project_id, user_id))
@@ -117,6 +124,10 @@ init_db()
 # --- 오디오 처리 로직 ---
 
 def separate_audio(file_path, filename):
+    # 메모리 절약을 위해 스레드 수 제한 및 CPU 모드 명시
+    env = os.environ.copy()
+    env["OMP_NUM_THREADS"] = "2"
+    
     command = [
         sys.executable,
         "-m", "demucs",
@@ -125,12 +136,21 @@ def separate_audio(file_path, filename):
         "--out", OUTPUT_DIR,
         file_path
     ]
-    subprocess.run(command, check=True)
+    
+    result = subprocess.run(command, env=env, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Demucs 실행 실패: {result.stderr}")
+        
     base_name = os.path.splitext(filename)[0]
-    return os.path.join(OUTPUT_DIR, "htdemucs_6s", base_name)
+    target_dir = os.path.join(OUTPUT_DIR, "htdemucs_6s", base_name)
+    
+    if not os.path.exists(target_dir):
+        raise FileNotFoundError(f"분리된 결과 폴더를 찾을 수 없습니다: {target_dir}")
+        
+    return target_dir
 
 def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
-    if not selected_stems:
+    if not selected_stems or not separated_dir or not os.path.exists(separated_dir):
         return None
 
     input_files = []
@@ -145,7 +165,6 @@ def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
     unique_id = str(uuid.uuid4())[:8]
     output_path = os.path.join(PROCESSED_DIR, f"mix_{unique_id}.wav")
     
-    # 내장/시스템 독립형 ffmpeg 바이너리 자동 연동
     try:
         ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     except Exception:
@@ -177,7 +196,7 @@ def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
         subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return output_path
     except Exception as e:
-        st.error(f"오디오 처리 중 오류 발생: {e}")
+        st.error(f"오디오 믹싱 처리 중 오류 발생: {e}")
         return None
 
 
@@ -268,7 +287,7 @@ else:
             st.rerun()
 
         st.title("➕ 새 음원 작업 추가")
-        uploaded_file = st.file_uploader("음악 파일 업로드 (MP3, WAV)", type=["mp3", "wav"])
+        uploaded_file = st.file_uploader("음악 파일 업로드 (MP3, WAV 권장: 3~4분 내외)", type=["mp3", "wav"])
 
         if uploaded_file is not None:
             file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
@@ -276,7 +295,7 @@ else:
                 f.write(uploaded_file.getbuffer())
 
             if st.button("🚀 음원 세션 분리 및 저장 시작", type="primary", use_container_width=True):
-                with st.spinner("Demucs AI 모델이 세션을 분리하는 중입니다. (수 분 소요)"):
+                with st.spinner("AI 모델이 악기별 세션을 분리 중입니다. (무료 서버 특성상 3~7분 정도 소요될 수 있습니다)"):
                     try:
                         separated_dir = separate_audio(file_path, uploaded_file.name)
                         song_title = os.path.splitext(uploaded_file.name)[0]
@@ -292,7 +311,7 @@ else:
                         st.session_state['view'] = 'project_detail'
                         st.rerun()
                     except Exception as e:
-                        st.error(f"오류 발생 (파일이 너무 크거나 서버 자원이 부족할 수 있습니다): {e}")
+                        st.error(f"오류 발생 (파일 용량이 너무 크거나 서버 메모리가 부족하여 중단되었습니다): {e}")
 
     elif st.session_state['view'] == 'project_detail':
         if st.button("⬅️ 목록으로 돌아가기"):
