@@ -124,7 +124,7 @@ init_db()
 # --- 오디오 및 유튜브 처리 로직 ---
 
 def download_youtube_audio(youtube_url, output_dir):
-    """유튜브 403 오류 우회를 위한 web_embedded 클라이언트 적용"""
+    """유튜브 봇 인증(Sign in) 오류 우회를 위한 브라우저 쿠키 연동 적용"""
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -136,15 +136,14 @@ def download_youtube_audio(youtube_url, output_dir):
         'quiet': True,
         'noplaylist': True,
         'socket_timeout': 30,
-        # 403 에러 회피율이 가장 높은 embed 클라이언트 지정
+        # 컴퓨터에 설치된 브라우저(Firefox 또는 Chrome)의 로그인 세션을 가져와 봇 검증 우회
+        # (만약 파이어폭스를 사용 중이시면 'firefox'로 변경, 크롬인 경우 'chrome' 사용)
+        'cookiesfrombrowser': ('firefox',), 
         'extractor_args': {
             'youtube': {
-                'player_client': ['web_embedded', 'mweb'],
+                'player_client': ['web', 'mweb']
             }
         },
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        }
     }
     
     try:
@@ -157,7 +156,8 @@ def download_youtube_audio(youtube_url, output_dir):
             song_title = "".join(c for c in song_title if c.isalnum() or c in (' ', '-', '_', '[', ']')).strip()
         return mp3_path, song_title
     except Exception as e:
-        raise RuntimeError(f"다운로드 실패: {e}")
+        raise RuntimeError(f"다운로드 실패 (브라우저 로그인 쿠키 필요): {e}")
+        
 def separate_audio(file_path, filename):
     env = os.environ.copy()
     env["OMP_NUM_THREADS"] = "2"
