@@ -748,7 +748,7 @@ else:
             st.session_state['current_project'] = None
             st.rerun()
 
-    base_tabs = ["🎵 내 작업실", "🎮 연습실 & 상점", "🎷 합주","\n(임원진 전용)" "👥 부원 목록", "🤝 팀", "🎪 공연 관리"]
+    base_tabs = ["🎵 내 작업실", "🎮 연습실 & 상점", "🎷 합주","\n(임원진 전용)\n" "👥 부원 목록", "🤝 팀", "🎪 공연 관리"]
     if member['is_admin'] == 1:
         base_tabs.append("⚙️ 임원 관리")
 
