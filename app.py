@@ -5,6 +5,7 @@ import shutil
 import sys
 import sqlite3
 import uuid
+import time
 from datetime import datetime
 import imageio_ffmpeg
 
@@ -18,7 +19,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-# 페이지 설정 및 HERTZ 맞춤형 CSS (블랙 & 레드 컨셉)
+# 페이지 설정 및 HERTZ 맞춤형 CSS (애니메이션 포함)
 st.set_page_config(page_title="HERTZ Session Master", page_icon="🎸", layout="centered")
 
 st.markdown("""
@@ -49,12 +50,24 @@ st.markdown("""
         background-color: #cc1b1b;
         color: white;
     }
+    @keyframes rockPerformance {
+        0% { transform: translateY(0px) rotate(0deg); }
+        25% { transform: translateY(-8px) rotate(-3deg); }
+        50% { transform: translateY(0px) rotate(0deg); }
+        75% { transform: translateY(-8px) rotate(3deg); }
+        100% { transform: translateY(0px) rotate(0deg); }
+    }
+    .rock-character {
+        display: inline-block;
+        font-size: 64px;
+        animation: rockPerformance 0.8s infinite ease-in-out;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # 초기 부원 명단 데이터 (본인 계정 강대현 임원진 1 설정 포함)
 INITIAL_MEMBERS = [
-    ("강대현", "전기전자공학부", "25", "기타", 1),
+    ("강대현", "전기전자공학부", "25", "기타", 0),
     ("강준", "전기전자공학부", "23", "베이스", 0),
     ("권도영", "컴퓨터공학부", "24", "보컬", 0),
     ("권찬우", "항공우주모빌리티공학과", "25", "베이스", 0),
@@ -63,7 +76,7 @@ INITIAL_MEMBERS = [
     ("김민재", "전기전자공학부", "25", "기타", 0),
     ("김서윤", "환경보건과학과", "25", "드럼", 0),
     ("김수민", "화학공학부", "23", "베이스", 0),
-    ("김준홍", "화학공학부", "23", "기타", 0),
+    ("김준홍", "화학공학부", "23", "기타", 1),
     ("남성진", "화학공학부", "23", "기타", 0),
     ("노시영", "생물공학과", "25", "드럼", 0),
     ("박서진", "전기전자공학부", "25", "보컬", 0),
@@ -71,9 +84,9 @@ INITIAL_MEMBERS = [
     ("박주용", "재료공학과", "23", "기타", 0),
     ("박현준", "산업공학과", "26", "보컬", 0),
     ("백찬민", "사회환경공학부", "24", "드럼", 0),
-    ("변지우", "생물공학과", "24", "기타", 0),
-    ("변지은", "화학공학부", "22", "기타", 0),
-    ("손예원", "행정학과", "22", "보컬", 0),
+    ("변지우", "생물공학과", "24", "기타", 1),
+    ("변지은", "화학공학부", "22", "기타", 1),
+    ("손예원", "행정학과", "22", "보컬", 1),
     ("송종민", "전기전자공학부", "21", "기타", 0),
     ("심재형", "산림조경전공 (항공우주모빌리티공학과)", "25", "기타", 0),
     ("유병욱", "화학공학부", "23", "기타", 0),
@@ -87,16 +100,16 @@ INITIAL_MEMBERS = [
     ("조제희", "기계항공공학부", "20", "보컬", 0),
     ("조혜성", "기계로봇자동차공학부", "26", "키보드", 0),
     ("천현승", "일어교육과", "21", "보컬", 0),
-    ("최아현", "동물자원과학과", "22", "보컬", 0),
+    ("최아현", "동물자원과학과", "22", "보컬", 1),
     ("최우혁", "항공우주모빌리티공학과", "26", "드럼", 0),
     ("최준호", "전기전자공학과", "26", "기타", 0),
     ("최준희", "전기전자공학부", "21", "베이스", 0),
     ("하은지", "전기전자공학부", "23", "드럼", 0),
     ("한호림", "전기전지공학부", "26", "베이스", 0),
-    ("허승범", "전기전자공학부", "23", "보컬", 0)
+    ("허승범", "전기전자공학부", "23", "보컬", 1)
 ]
 
-# 공통 장착 아이템 카테고리별 정의 (인덱스 순서대로 이전 아이템 필수 구매 조건 적용)
+# 공통 장착 아이템 카테고리별 정의
 COMMON_SHOP_ITEMS = {
     "모자": [
         {"id": "hat_1", "name": "🧢 기본 스냅백", "cost": 1000, "desc": "어느 룩에나 잘 어울리는 무난한 스냅백"},
@@ -189,7 +202,6 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 1. members 테이블
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS members (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,11 +213,11 @@ def init_db():
                 credits INTEGER DEFAULT 0,
                 inventory TEXT DEFAULT '',
                 practice_minutes INTEGER DEFAULT 0,
-                is_active INTEGER DEFAULT 1
+                is_active INTEGER DEFAULT 1,
+                bio TEXT DEFAULT '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!'
             )
         ''')
         
-        # 컬럼 마이그레이션 확인
         cursor.execute("PRAGMA table_info(members)")
         columns = [col[1] for col in cursor.fetchall()]
         if 'credits' not in columns:
@@ -216,8 +228,9 @@ def init_db():
             cursor.execute("ALTER TABLE members ADD COLUMN practice_minutes INTEGER DEFAULT 0")
         if 'is_active' not in columns:
             cursor.execute("ALTER TABLE members ADD COLUMN is_active INTEGER DEFAULT 1")
+        if 'bio' not in columns:
+            cursor.execute("ALTER TABLE members ADD COLUMN bio TEXT DEFAULT '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!'")
         
-        # 2. projects 테이블
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -229,7 +242,6 @@ def init_db():
             )
         ''')
 
-        # 3. performances 테이블
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS performances (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -238,7 +250,6 @@ def init_db():
             )
         ''')
 
-        # 4. performance_teams 테이블
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS performance_teams (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -250,13 +261,12 @@ def init_db():
             )
         ''')
         
-        # 초기 데이터 삽입
         cursor.execute("SELECT COUNT(*) FROM members")
         if cursor.fetchone()[0] == 0:
             for item in INITIAL_MEMBERS:
                 cursor.execute('''
-                    INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active)
-                    VALUES (?, ?, ?, ?, ?, 0, '', 0, 1)
+                    INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio)
+                    VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!')
                 ''', item)
             
         conn.commit()
@@ -304,8 +314,8 @@ def add_member(name, department, student_id, session, is_admin):
     cursor = conn.cursor()
     try:
         cursor.execute('''
-            INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active)
-            VALUES (?, ?, ?, ?, ?, 0, '', 0, 1)
+            INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio)
+            VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!')
         ''', (name.strip(), department.strip(), str(student_id).strip(), session, 1 if is_admin else 0))
         conn.commit()
         return True, "부원이 성공적으로 추가되었습니다."
@@ -325,6 +335,13 @@ def set_member_active_status(member_id, is_active):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE members SET is_active = ? WHERE id = ?", (1 if is_active else 0, member_id))
+    conn.commit()
+    conn.close()
+
+def update_member_bio(member_id, bio):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE members SET bio = ? WHERE id = ?", (bio.strip(), member_id))
     conn.commit()
     conn.close()
 
@@ -352,7 +369,6 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
         conn.close()
         return False, "이미 보유한 아이템입니다."
         
-    # 순서 제한 확인 (이전 아이템을 모두 구매했는지 검사)
     target_idx = -1
     for idx, item in enumerate(category_items):
         if item['id'] == target_item_id:
@@ -549,6 +565,24 @@ if 'view' not in st.session_state:
 if 'current_project' not in st.session_state:
     st.session_state['current_project'] = None
 
+# 타이머 및 연습 세션 상태 관리 (탭 이동 시 유지 및 로그아웃 시 자동 정산)
+if 'is_practicing' not in st.session_state:
+    st.session_state['is_practicing'] = False
+if 'practice_start_time' not in st.session_state:
+    st.session_state['practice_start_time'] = None
+
+
+# --- 로그아웃 및 세션 종료 시 미정산 연습 자동 반영 함수 ---
+def handle_logout_or_stop():
+    if st.session_state.get('is_practicing') and st.session_state.get('practice_start_time') and st.session_state.get('member'):
+        elapsed_seconds = time.time() - st.session_state['practice_start_time']
+        elapsed_minutes = int(elapsed_seconds // 60)
+        if elapsed_minutes >= 1:
+            earned = elapsed_minutes * 30
+            add_practice_time_and_credits(st.session_state['member']['id'], elapsed_minutes, earned)
+    st.session_state['is_practicing'] = False
+    st.session_state['practice_start_time'] = None
+
 
 # --- UI 레이아웃 ---
 
@@ -584,7 +618,6 @@ if st.session_state['member'] is None:
                 st.error("❌ 등록된 HERTZ 부원 정보와 일치하지 않거나 활동이 중단된 계정입니다.")
 
 else:
-    # 최신 회원 정보 동기화
     current_mem_id = st.session_state['member']['id']
     latest_member_info = get_member_fresh(current_mem_id)
     if latest_member_info:
@@ -594,20 +627,28 @@ else:
     top_col1, top_col2 = st.columns([3, 1])
     with top_col1:
         admin_badge = "👑 [임원진]" if member['is_admin'] == 1 else "🎵 [부원]"
-        st.markdown(f"{admin_badge} **{member['name']}** 님 (`{member['department']}` / {member['student_id']}학번 / `{member['session']}`) | 💰 **{member['credits']} 크레딧**")
+        practicing_indicator = " 🔴 [연습 타이머 작동 중]" if st.session_state['is_practicing'] else ""
+        st.markdown(f"{admin_badge} **{member['name']}** 님 (`{member['department']}` / {member['student_id']}학번 / `{member['session']}`) | 💰 **{member['credits']} 크레딧**{practicing_indicator}")
     with top_col2:
         if st.button("로그아웃"):
+            handle_logout_or_stop()
             st.session_state['member'] = None
             st.session_state['view'] = 'dashboard'
             st.session_state['current_project'] = None
             st.rerun()
 
-    # 네비게이션 탭 설정 (멤버 탭을 누구나 볼 수 있도록 메인 탭에 항상 포함)
-    base_tabs = ["🎵 내 작업실", "🎮 연습 & 상점", "👥 부원 목록 및 아바타", "🤝 팀 조합", "🎪 공연 관리"]
+    base_tabs = ["🎵 내 작업실", "🎮 연습실 & 상점", "👥 부원 목록 및 아바타", "🤝 팀 조합", "🎪 공연 관리"]
     if member['is_admin'] == 1:
         base_tabs.append("⚙️ 임원 관리")
 
     selected_main_tab = st.radio("상단 메인 메뉴", base_tabs, horizontal=True, label_visibility="collapsed")
+
+    # 전체 가능한 장비 아이템 모음 정의 (아바타 표시용)
+    all_possible_shop_items = []
+    for cat, items in COMMON_SHOP_ITEMS.items():
+        all_possible_shop_items.extend(items)
+    for s_name, s_items in SESSION_GEAR_ITEMS.items():
+        all_possible_shop_items.extend(s_items)
 
     if selected_main_tab == "🎵 내 작업실":
         if st.session_state['view'] == 'dashboard':
@@ -742,11 +783,11 @@ else:
                                 key=f"dl_det_{stem}"
                             )
 
-    elif selected_main_tab == "🎮 연습 & 상점":
+    elif selected_main_tab == "🎮 연습실 & 상점":
         st.title("🎮 HERTZ 아케이드 연습실 & 상점")
-        st.caption("연습을 완료하고 크레딧을 모아 캐릭터 아바타에 장비와 아이템을 순서대로 장착해보세요! (1분당 30 크레딧)")
+        st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 캐릭터 아바타에 장비와 아이템을 순서대로 장착해보세요! (1분당 30 크레딧)")
 
-        sub_tab1, sub_tab2 = st.tabs(["🎸 연습 세션실 & 아바타", "🛍️ 확장 상점 & 인벤토리"])
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["🎸 연습 세션실 & 아바타", "🛍️ 확장 상점 & 인벤토리", "✏️ 내 한줄소개 설정"])
 
         inventory_str = member['inventory'] or ""
         my_items = [i.strip() for i in inventory_str.split(",") if i.strip()]
@@ -754,56 +795,85 @@ else:
         user_title = get_title_by_practice_time(user_practice_time)
 
         with sub_tab1:
-            st.subheader("무대 위 캐릭터 스튜디오")
+            st.subheader("무대 위 캐릭터 공연 애니메이션 & 타이머")
             
             user_session = member['session']
             session_emojis = {
-                "기타": "🎸💥 [열정적으로 기타 솔로 연주 중!]",
-                "베이스": "🎸🔥 [그루브한 베이스 라인 연주 중!]",
-                "보컬": "🎤✨ [스탠딩 마이크를 잡고 열창 중!]",
-                "드럼": "🥁💥 [파워풀하게 드럼 스틱을 흔드는 중!]",
-                "키보드": "🎹🎶 [화려한 신디사이저 연주 중!]"
+                "기타": "🎸💥",
+                "베이스": "🎸🔥",
+                "보컬": "🎤✨",
+                "드럼": "🥁💥",
+                "키보드": "🎹🎶"
             }
-            current_animation = session_emojis.get(user_session, "🎶 [음악에 맞춰 연주 중!]")
+            char_icon = session_emojis.get(user_session, "🎶")
             
-            # 장착 중인 아이템 실시간 반영 시각화
             equipped_display = []
-            all_possible_shop_items = []
-            for cat, items in COMMON_SHOP_ITEMS.items():
-                all_possible_shop_items.extend(items)
-            for s_name, s_items in SESSION_GEAR_ITEMS.items():
-                all_possible_shop_items.extend(s_items)
-
             for mi in my_items:
                 match_obj = next((item for item in all_possible_shop_items if item['id'] == mi), None)
                 if match_obj:
                     equipped_display.append(match_obj['name'])
 
             gear_text = " | ".join(equipped_display) if equipped_display else "기본 장비 착용 중"
+            user_bio = member['bio'] or "안녕하세요!"
+
+            # 타이머 상태 표시 및 계산
+            timer_html_status = ""
+            current_elapsed_seconds = 0
+            if st.session_state['is_practicing'] and st.session_state['practice_start_time']:
+                current_elapsed_seconds = int(time.time() - st.session_state['practice_start_time'])
+                mins = current_elapsed_seconds // 60
+                secs = current_elapsed_seconds % 60
+                timer_html_status = f"<h3 style='color: #00FF66; margin: 5px 0;'>⏱️ 연습 진행 중: {mins:02d}분 {secs:02d}초</h3>"
+            else:
+                timer_html_status = "<p style='color: #888; font-size: 14px;'>[타이머 대기 중 - 연습 시작 버튼을 누르세요]</p>"
 
             st.markdown(f"""
-                <div style="background-color: #161616; padding: 25px; border-radius: 12px; text-align: center; border: 2px dashed #FF2222; margin-bottom: 20px;">
+                <div style="background-color: #161616; padding: 30px; border-radius: 12px; text-align: center; border: 2px dashed #FF2222; margin-bottom: 20px;">
                     <h2 style="color: #FF2222; margin: 0;">STAGE LIVE</h2>
                     <p style="font-size: 14px; color: #ff5555; margin-top: 5px;"><b>{user_title}</b></p>
-                    <p style="font-size: 20px; margin: 10px 0; color: #fff;">{current_animation}</p>
-                    <p style="color: #aaa; font-size: 14px;">본래 세션: <b>{user_session}</b> | 총 연습 시간: <b>{user_practice_time}분</b></p>
+                    <div style="margin: 15px 0;">
+                        <span class="rock-character">{char_icon}</span>
+                    </div>
+                    <p style="font-style: italic; color: #ddd; background: #222; padding: 8px 15px; border-radius: 20px; display: inline-block; margin: 5px 0;">"{user_bio}"</p>
+                    {timer_html_status}
+                    <p style="color: #aaa; font-size: 14px; margin-top: 10px;">본래 세션: <b>{user_session}</b> | 누적 연습 시간: <b>{user_practice_time}분</b></p>
                     <hr style="border-color: #333; margin: 15px 0;">
                     <p style="color: #ff9999; font-size: 15px; margin: 0;">✨ <b>착용 중인 장비:</b> {gear_text}</p>
                 </div>
             """, unsafe_allow_html=True)
 
-            col_timer1, col_timer2 = st.columns(2)
-            with col_timer1:
-                practice_minutes = st.number_input("연습한 시간 (분 단위 입력)", min_value=1, max_value=300, value=1, step=1)
-            with col_timer2:
-                st.write("")
-                st.write("")
-                earn_btn = st.button("🏁 연습 완료 및 크레딧 정산받기", type="primary", use_container_width=True)
+            col_t_btn1, col_t_btn2 = st.columns(2)
+            with col_t_btn1:
+                if not st.session_state['is_practicing']:
+                    if st.button("🔴 연습 시작", use_container_width=True, type="primary"):
+                        st.session_state['is_practicing'] = True
+                        st.session_state['practice_start_time'] = time.time()
+                        st.rerun()
+                else:
+                    st.button("🔴 연습 진행 중...", disabled=True, use_container_width=True)
 
-            if earn_btn:
-                earned = practice_minutes * 30
-                add_practice_time_and_credits(member['id'], practice_minutes, earned)
-                st.success(f"🎉 연습 완료! {practice_minutes}분 동안 연습하여 **{earned} 크레딧**을 획득했습니다!")
+            with col_t_btn2:
+                if st.session_state['is_practicing']:
+                    if st.button("⏹️ 연습 종료 및 크레딧 정산", use_container_width=True, type="primary"):
+                        elapsed_seconds = time.time() - st.session_state['practice_start_time']
+                        elapsed_minutes = int(elapsed_seconds // 60)
+                        if elapsed_minutes < 1:
+                            st.warning("⚠️ 연습 시간이 1분 미만입니다. 최소 1분 이상 연습해야 크레딧이 적립됩니다.")
+                            st.session_state['is_practicing'] = False
+                            st.session_state['practice_start_time'] = None
+                        else:
+                            earned = elapsed_minutes * 30
+                            add_practice_time_and_credits(member['id'], elapsed_minutes, earned)
+                            st.success(f"🎉 연습 종료! {elapsed_minutes}분 동안 연습하여 **{earned} 크레딧**을 획득했습니다!")
+                            st.session_state['is_practicing'] = False
+                            st.session_state['practice_start_time'] = None
+                        st.rerun()
+                else:
+                    st.button("⏹️ 정지됨", disabled=True, use_container_width=True)
+
+            # 유튜브 및 타 탭 이동 시에도 타이머가 실시간 갱신되도록 자동 새로고침(리런) 트리거
+            if st.session_state['is_practicing']:
+                time.sleep(1)
                 st.rerun()
 
         with sub_tab2:
@@ -812,7 +882,6 @@ else:
             
             shop_tabs = st.tabs(["🧢 모자", "옷", "👟 신발", "💍 장신구", "🎗️ MD", "🎸 세션별 악기 장비"])
 
-            # 1. 공통 아이템 상점
             categories = ["모자", "옷", "신발", "장신구", "MD"]
             for idx, cat_name in enumerate(categories):
                 with shop_tabs[idx]:
@@ -823,7 +892,6 @@ else:
                     for i, item in enumerate(c_items):
                         with scols[i % 2]:
                             is_owned = item['id'] in my_items
-                            # 이전 아이템 구매 여부 확인
                             can_buy = True
                             if i > 0:
                                 prev_id = c_items[i - 1]['id']
@@ -851,7 +919,6 @@ else:
                                     else:
                                         st.error(msg)
 
-            # 2. 세션별 악기 상점
             with shop_tabs[5]:
                 st.markdown("### 🎸 세션별 악기 및 장비 상점 (단계별 순서대로 구매)")
                 st.caption("보컬이라도 기타나 건반 등 다른 세션의 장비를 단계별로 자유롭게 구매하여 장착할 수 있습니다!")
@@ -900,9 +967,21 @@ else:
             else:
                 st.info("아직 구매한 아이템이 없습니다. 상점에서 마음에 드는 장비를 구매해보세요!")
 
+        with sub_tab3:
+            st.subheader("✏️ 나만의 한줄소개 수정")
+            st.caption("부원 목록 및 내 작업실 카드에 표시될 한줄소개를 자유롭게 작성해보세요.")
+            
+            with st.form("bio_form"):
+                new_bio_input = st.text_input("한줄소개 입력", value=member.get('bio', ''))
+                bio_submit = st.form_submit_button("한줄소개 저장하기", use_container_width=True)
+                if bio_submit:
+                    update_member_bio(member['id'], new_bio_input)
+                    st.success("한줄소개가 성공적으로 업데이트되었습니다!")
+                    st.rerun()
+
     elif selected_main_tab == "👥 부원 목록 및 아바타":
         st.title("👥 HERTZ 전체 부원 및 아바타 갤러리")
-        st.caption("모든 부원들의 캐릭터, 총 연습 시간, 칭호 및 착용 장비를 누구나 확인할 수 있습니다! (탈퇴한 부원도 아카이브에서 확인 가능)")
+        st.caption("모든 부원들의 한줄소개, 캐릭터 아바타, 총 연습 시간 및 착용 장비를 누구나 확인할 수 있습니다!")
 
         filter_opt = st.radio("조회 범위 선택", ["활동 중인 부원만", "전체 명단 (탈퇴한 부원 포함)"], horizontal=True)
         
@@ -916,15 +995,16 @@ else:
             m_time = m['practice_minutes']
             m_title = get_title_by_practice_time(m_time)
             m_session = m['session']
+            m_bio = m['bio'] or "안녕하세요!"
             
             session_emojis = {
-                "기타": "🎸💥 [열정적으로 기타 솔로 연주 중!]",
-                "베이스": "🎸🔥 [그루브한 베이스 라인 연주 중!]",
-                "보컬": "🎤✨ [스탠딩 마이크를 잡고 열창 중!]",
-                "드럼": "🥁💥 [파워풀하게 드럼 스틱을 흔드는 중!]",
-                "키보드": "🎹🎶 [화려한 신디사이저 연주 중!]"
+                "기타": "🎸💥",
+                "베이스": "🎸🔥",
+                "보컬": "🎤✨",
+                "드럼": "🥁💥",
+                "키보드": "🎹🎶"
             }
-            m_anim = session_emojis.get(m_session, "🎶 [음악에 맞춰 연주 중!]")
+            m_icon = session_emojis.get(m_session, "🎶")
 
             m_gear_names = []
             for mi in m_items:
@@ -938,10 +1018,13 @@ else:
 
             st.markdown(f"""
                 <div style="background: #141414; padding: 20px; border-radius: 10px; border: 1px solid #333; margin-bottom: 15px;">
-                    <h3 style="margin: 0; color: #fff;">{admin_icon}{m['name']} <span style="font-size: 14px; color: #888;">({m['department']} / {m['student_id']}학번 / {m_session})</span> {status_badge}</h3>
-                    <p style="margin: 5px 0; color: #ff6666; font-size: 14px;"><b>칭호:</b> {m_title} (총 연습 시간: <b>{m_time}분</b>)</p>
-                    <p style="margin: 5px 0; font-size: 15px;">{m_anim}</p>
-                    <p style="margin: 5px 0 0 0; color: #aaa; font-size: 13px;"><b>착용 장비:</b> {m_gear_str}</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="margin: 0; color: #fff;">{admin_icon}{m['name']} <span style="font-size: 14px; color: #888;">({m['department']} / {m['student_id']}학번 / {m_session})</span> {status_badge}</h3>
+                    </div>
+                    <p style="margin: 8px 0; color: #ff6666; font-size: 14px;"><b>칭호:</b> {m_title} (총 연습 시간: <b>{m_time}분</b>)</p>
+                    <p style="margin: 5px 0; font-style: italic; color: #ddd; background: #202020; padding: 6px 12px; border-radius: 6px; display: inline-block;">"{m_bio}"</p>
+                    <p style="margin: 10px 0 5px 0; font-size: 32px;"><span class="rock-character">{m_icon}</span></p>
+                    <p style="margin: 0; color: #aaa; font-size: 13px;"><b>착용 장비:</b> {m_gear_str}</p>
                 </div>
             """, unsafe_allow_html=True)
 
