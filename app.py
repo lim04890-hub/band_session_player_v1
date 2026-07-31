@@ -96,13 +96,73 @@ INITIAL_MEMBERS = [
     ("허승범", "전기전자공학부", "23", "보컬", 0)
 ]
 
-# 상점 아이템 정의
-SHOP_ITEMS = [
-    {"id": "item_1", "name": "✨ 반짝이는 기타 피크 (장신구)", "cost": 1000, "type": "accessory", "desc": "무대 위에서 은은하게 빛나는 기본 장신구"},
-    {"id": "item_2", "name": "🔥 락스타 가죽 자켓 (장신구)", "cost": 1000, "type": "accessory", "desc": "진정한 밴드 맨의 상징"},
-    {"id": "item_3", "name": "👑 황금 마이크 스탠드 (고급 장신구)", "cost": 5000, "type": "luxury", "desc": "무대를 압도하는 화려한 황금 장신구"},
-    {"id": "item_4", "name": "🎸 커스텀 다이아몬드 기타 (고급 장신구)", "cost": 5000, "type": "luxury", "desc": "최고급 사운드와 비주얼을 자랑하는 장신구"}
-]
+# 공통 장착 아이템 카테고리별 정의 (모자, 옷, 신발, 장신구, MD)
+COMMON_SHOP_ITEMS = {
+    "모자": [
+        {"id": "hat_1", "name": "🧢 기본 스냅백", "cost": 1000, "desc": "어느 룩에나 잘 어울리는 무난한 스냅백"},
+        {"id": "hat_2", "name": "🎩 빈티지 페도라", "cost": 3000, "desc": "재즈와 인디 감성을 더해주는 페도라"},
+        {"id": "hat_3", "name": "👑 락스타 실크 햇", "cost": 5000, "desc": "무대 위에서 눈에 띄는 화려한 모자"},
+        {"id": "hat_4", "name": "🌟 다이아몬드 크라운", "cost": 10000, "desc": "최고급 보석이 박힌 황제의 왕관"}
+    ],
+    "옷": [
+        {"id": "cloth_1", "name": "👕 무지 밴드 티셔츠", "cost": 1000, "desc": "땀 흡수가 잘 되는 심플한 연습용 티셔츠"},
+        {"id": "cloth_2", "name": "🧥 데님 청자켓", "cost": 3000, "desc": "청춘과 록의 상징인 스타일리시한 청자켓"},
+        {"id": "cloth_3", "name": "🔥 락스타 가죽 라이더 자켓", "cost": 5000, "desc": "묵직한 카리스마를 뿜어내는 가죽 자켓"},
+        {"id": "cloth_4", "name": "✨ 골드 벨벳 투피스", "cost": 10000, "desc": "럭셔리함의 극치를 보여주는 무대 의상"}
+    ],
+    "신발": [
+        {"id": "shoe_1", "name": "👟 편안한 단화 스니커즈", "cost": 1000, "desc": "연습실에서 신기 좋은 가벼운 스니커즈"},
+        {"id": "shoe_2", "name": "🥾 컨버스 하이톱", "cost": 3000, "desc": "합주할 때 발목을 탄탄하게 잡아주는 하이탑"},
+        {"id": "shoe_3", "name": "🥿 스터드 워커 부츠", "cost": 5000, "desc": "거친 매력을 더해주는 락커들의 부츠"},
+        {"id": "shoe_4", "name": "💎 다이아몬드 스니커즈", "cost": 10000, "desc": "한 걸음마다 반짝이는 최고급 한정판 슈즈"}
+    ],
+    "장신구": [
+        {"id": "acc_1", "name": "💍 써지컬 스틸 링", "cost": 1000, "desc": "심플하면서도 시크한 기본 반지"},
+        {"id": "acc_2", "name": "⛓️ 메탈 체인 목걸이", "cost": 3000, "desc": "힙한 감성을 완성해주는 체인 목걸이"},
+        {"id": "acc_3", "name": "🕶️ 메탈릭 선글라스", "cost": 5000, "desc": "조명을 완벽하게 차단하는 락스타 선글라스"},
+        {"id": "acc_4", "name": "💎 플래티넘 락스타 체인", "cost": 10000, "desc": "재력과 멋을 동시에 과시하는 순은 체인"}
+    ],
+    "MD": [
+        {"id": "md_1", "name": "🎗️ HERTZ 기본 반다나", "cost": 1000, "desc": "땀을 닦거나 손목에 두르는 밴드 공식 MD"},
+        {"id": "md_2", "name": "🧣 로고 자수 스포츠 타올", "cost": 3000, "desc": "격렬한 합주 후 땀 닦기 딱 좋은 타올"},
+        {"id": "md_3", "name": "🎒 HERTZ 투어 백팩", "cost": 5000, "desc": "악보와 장비를 모두 담는 투어용 가방"},
+        {"id": "md_4", "name": "🎟️ VIP 올패스 패스포트", "cost": 10000, "desc": "모든 공연장 백스테이지를 프리패스하는 목걸이"}
+    ]
+}
+
+# 세션별 악기 아이템 정의 (보컬, 기타, 베이스, 드럼, 키보드)
+SESSION_GEAR_ITEMS = {
+    "기타": [
+        {"id": "g_1", "name": "🎸 입문용 통기타 (스콰이어급)", "cost": 1000, "desc": "처음 튜닝을 배우며 코트를 잡던 추억의 기타"},
+        {"id": "g_2", "name": "🎸 그럴듯한 일렉기타 (에피폰 스탠다드)", "cost": 3000, "desc": "합주실에서 험버커 사운드를 뿜어내는 든든한 녀석"},
+        {"id": "g_3", "name": "🎸 칩슨 & 휀다 (오리지널 미국산)", "cost": 5000, "desc": "기타 키즈들의 로망, 명불허전 전설의 브랜드"},
+        {"id": "g_4", "name": "🎸 마스터빌드 커스텀샵", "cost": 10000, "desc": "장인이 한 땀 한 땀 영혼을 갈아 넣은 세상에 단 하나뿐인 기타"}
+    ],
+    "베이스": [
+        {"id": "b_1", "name": "🎸 입문용 4현 베이스 (스콰이어)", "cost": 1000, "desc": "묵직한 저음의 세계로 입문하게 만드는 베이스"},
+        {"id": "b_2", "name": "🎸 그루브한 베이스 (멕시칸 펜더)", "cost": 3000, "desc": "밴드의 든든한 뼈대를 받쳐주는 단단한 사운드"},
+        {"id": "b_3", "name": "🎸 뮤직맨 & Rickenbacker", "cost": 5000, "desc": "특유의 펀치감과 개성 넘치는 로큰롤 베이스"},
+        {"id": "b_4", "name": "🎸 커스텀샵 액티브 5현 베이스", "cost": 10000, "desc": "무대 밑바닥까지 진동을 때려 박는 하이엔드 베이스"}
+    ],
+    "보컬": [
+        {"id": "v_1", "name": "🎤 가성비 다이나믹 마이크 (슈어 SM58급)", "cost": 1000, "desc": "전 세계 합주실과 라이브 클럽의 국룰 마이크"},
+        {"id": "v_2", "name": "🎤 무선 스테이지 마이크", "cost": 3000, "desc": "무대 위를 자유롭게 누비며 관객을 사로잡는 마이크"},
+        {"id": "v_3", "name": "🎤 노이만 진공관 마이크", "cost": 5000, "desc": "숨소리 하나까지 예술로 만드는 최고급 스튜디오 마이크"},
+        {"id": "v_4", "name": "🎤 커스텀 다이아몬드 스튜디오 마이크", "cost": 10000, "desc": "보컬리스트의 위엄을 상징하는 보석 박힌 마이크"}
+    ],
+    "드럼": [
+        {"id": "d_1", "name": "🥁 연습용 스틱 & 패드 세트", "cost": 1000, "desc": "끊임없이 루디먼트를 연습하게 만드는 필수품"},
+        {"id": "d_2", "name": "🥁 펄 스탠다드 스네어 드럼", "cost": 3000, "desc": "귀를 찢는 타격감으로 곡의 리드미컬함을 살리는 스네어"},
+        {"id": "d_3", "name": "🥁 야마하 녹턴 & 타마 스타클래식", "cost": 5000, "desc": "프로 드러머들이 사랑하는 영롱한 타악기 브랜드"},
+        {"id": "d_4", "name": "🥁 커스텀 풀 메탈 킷트", "cost": 10000, "desc": "무대를 폭발시키는 압도적인 스케일의 드럼 세트"}
+    ],
+    "키보드": [
+        {"id": "k_1", "name": "🎹 61건반 가성비 신디사이저", "cost": 1000, "desc": "가볍게 들고 다니며 피아노와 패드 소리를 내는 건반"},
+        {"id": "k_2", "name": "🎹 야마하 모티프 / 노드 일렉트로", "cost": 3000, "desc": "합주실 무대를 꽉 채우는 따뜻한 건반 사운드"},
+        {"id": "k_3", "name": "🎹 노드 스테이지 레드 피아노", "cost": 5000, "desc": "건반 연주자들의 로망, 무대 위 강렬한 레드 감성"},
+        {"id": "k_4", "name": "🎹 그랜드 커스텀 신디사이저", "cost": 10000, "desc": "화려한 오케스트라 패드와 신스 사운드를 지배하는 장비"}
+    ]
+}
 
 # --- 데이터베이스 설정 ---
 
@@ -130,6 +190,14 @@ def init_db():
                 inventory TEXT DEFAULT ''
             )
         ''')
+        
+        # 기존 테이블에 누락된 컬럼이 있을 경우 안전하게 추가 (마이그레이션)
+        cursor.execute("PRAGMA table_info(members)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'credits' not in columns:
+            cursor.execute("ALTER TABLE members ADD COLUMN credits INTEGER DEFAULT 0")
+        if 'inventory' not in columns:
+            cursor.execute("ALTER TABLE members ADD COLUMN inventory TEXT DEFAULT ''")
         
         # 2. projects 테이블
         cursor.execute('''
@@ -332,12 +400,8 @@ def delete_performance(perf_id):
     conn.close()
 
 def save_performance_teams(perf_id, team_dict):
-    """
-    team_dict: { "팀 1": [member_id1, member_id2, ...], "팀 2": [...] }
-    """
     conn = get_db_connection()
     cursor = conn.cursor()
-    # 기존 해당 공연 팀 매핑 삭제 후 재등록
     cursor.execute("DELETE FROM performance_teams WHERE performance_id = ?", (perf_id,))
     for team_name, m_ids in team_dict.items():
         for m_id in m_ids:
@@ -349,13 +413,6 @@ def save_performance_teams(perf_id, team_dict):
 def get_performance_teams(perf_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        pt.*, m.name, m.department, m.student_id, m.session, m.credits, m.inventory
-        FROM performance_teams pt
-        JOIN members m ON pt.member_id = m.id
-        WHERE pt.performance_id = ?
-    ''', (perf_id,))
-    # SQLite row factory 때문에 직접 쿼리 수행
     cursor.execute('''
         SELECT pt.team_name, m.id as member_id, m.name, m.department, m.student_id, m.session 
         FROM performance_teams pt
@@ -649,14 +706,16 @@ else:
 
     elif selected_main_tab == "🎮 연습 & 상점":
         st.title("🎮 HERTZ 아케이드 연습실 & 상점")
-        st.caption("연습 버튼을 누르고 있으면 크레딧이 쌓입니다! (1분당 30 크레딧)")
+        st.caption("연습을 완료하고 크레딧을 모아 캐릭터 아바타에 장비와 아이템을 장착해보세요! (1분당 30 크레딧)")
 
-        sub_tab1, sub_tab2 = st.tabs(["🎸 연습 세션실", "🛍️ 장신구 상점"])
+        sub_tab1, sub_tab2 = st.tabs(["🎸 연습 세션실 & 아바타", "🛍️ 확장 상점 & 인벤토리"])
+
+        inventory_str = member['inventory'] or ""
+        my_items = [i.strip() for i in inventory_str.split(",") if i.strip()]
 
         with sub_tab1:
-            st.subheader("무대 위 캐릭터 연습 타이머")
+            st.subheader("무대 위 캐릭터 스튜디오")
             
-            # 세션별 캐릭터 애니메이션 효과 표현
             user_session = member['session']
             session_emojis = {
                 "기타": "🎸💥 [열정적으로 기타 솔로 연주 중!]",
@@ -667,15 +726,31 @@ else:
             }
             current_animation = session_emojis.get(user_session, "🎶 [음악에 맞춰 연주 중!]")
             
+            # 장착 중인 아이템 실시간 반영 시각화
+            equipped_display = []
+            all_possible_shop_items = []
+            for cat, items in COMMON_SHOP_ITEMS.items():
+                all_possible_shop_items.extend(items)
+            for s_name, s_items in SESSION_GEAR_ITEMS.items():
+                all_possible_shop_items.extend(s_items)
+
+            for mi in my_items:
+                match_obj = next((item for item in all_possible_shop_items if item['id'] == mi), None)
+                if match_obj:
+                    equipped_display.append(match_obj['name'])
+
+            gear_text = " | ".join(equipped_display) if equipped_display else "기본 장비 착용 중"
+
             st.markdown(f"""
                 <div style="background-color: #161616; padding: 25px; border-radius: 12px; text-align: center; border: 2px dashed #FF2222; margin-bottom: 20px;">
                     <h2 style="color: #FF2222; margin: 0;">STAGE LIVE</h2>
                     <p style="font-size: 20px; margin: 10px 0; color: #fff;">{current_animation}</p>
-                    <p style="color: #aaa; font-size: 14px;">현재 내 세션: <b>{user_session}</b></p>
+                    <p style="color: #aaa; font-size: 14px;">본래 세션: <b>{user_session}</b></p>
+                    <hr style="border-color: #333; margin: 15px 0;">
+                    <p style="color: #ff9999; font-size: 15px; margin: 0;">✨ <b>착용 중인 장비:</b> {gear_text}</p>
                 </div>
             """, unsafe_allow_html=True)
 
-            # 스트림릿 내 간이 타이머 및 연습 완료 버튼 구현
             col_timer1, col_timer2 = st.columns(2)
             with col_timer1:
                 practice_minutes = st.number_input("연습한 시간 (분 단위 입력)", min_value=1, max_value=300, value=1, step=1)
@@ -691,19 +766,54 @@ else:
                 st.rerun()
 
         with sub_tab2:
-            st.subheader("🛍️ 장신구 및 아이템 상점")
+            st.subheader("🛍️ 밴드 장비 및 패션 상점")
             st.markdown(f"현재 보유 크레딧: **{member['credits']} 크레딧**")
             
-            # 내 인벤토리 확인
-            inventory_str = member['inventory'] or ""
-            my_items = [i.strip() for i in inventory_str.split(",") if i.strip()]
+            # 카테고리별 탭 분류 (모자, 옷, 신발, 장신구, MD + 악기)
+            shop_tabs = st.tabs(["🧢 모자", "👕 옷", "👟 신발", "💍 장신구", "🎗️ MD", "🎸 세션별 악기 장비"])
 
-            shop_cols = st.columns(2)
-            for idx, item in enumerate(SHOP_ITEMS):
-                scol = shop_cols[idx % 2]
-                with scol:
-                    is_owned = item['id'] in my_items
-                    with st.container():
+            # 1. 공통 아이템 탭 렌더링
+            categories = ["모자", "옷", "신발", "장신구", "MD"]
+            for idx, cat_name in enumerate(categories):
+                with shop_tabs[idx]:
+                    st.markdown(f"### 🛒 {cat_name} 컬렉션 (가격: 1000 / 3000 / 5000 / 10000)")
+                    c_items = COMMON_SHOP_ITEMS[cat_name]
+                    
+                    scols = st.columns(2)
+                    for i, item in enumerate(c_items):
+                        with scols[i % 2]:
+                            is_owned = item['id'] in my_items
+                            st.markdown(f"""
+                                <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
+                                    <h4>{item['name']}</h4>
+                                    <p style="color: #ccc; font-size: 13px; margin: 5px 0;">{item['desc']}</p>
+                                    <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">가격: {item['cost']} 크레딧</p>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            
+                            if is_owned:
+                                st.button("보유 중 ✅", key=f"owned_{item['id']}", disabled=True, use_container_width=True)
+                            else:
+                                if st.button("구매하기 💳", key=f"buy_{item['id']}", use_container_width=True):
+                                    success, msg = purchase_item_db(member['id'], item['id'], item['cost'])
+                                    if success:
+                                        st.success(msg)
+                                        st.rerun()
+                                    else:
+                                        st.error(msg)
+
+            # 2. 세션별 악기 장비 탭 렌더링 (모든 세션 장비 구매 가능)
+            with shop_tabs[5]:
+                st.markdown("### 🎸 세션별 악기 및 장비 상점")
+                st.caption("보컬이라도 기타나 건반 등 다른 세션의 장비를 자유롭게 구매하여 장착할 수 있습니다!")
+                
+                selected_gear_session = st.selectbox("조회할 악기 세션 선택", ["기타", "베이스", "보컬", "드럼", "키보드"])
+                target_gear_list = SESSION_GEAR_ITEMS[selected_gear_session]
+                
+                g_cols = st.columns(2)
+                for i, item in enumerate(target_gear_list):
+                    with g_cols[i % 2]:
+                        is_owned = item['id'] in my_items
                         st.markdown(f"""
                             <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
                                 <h4>{item['name']}</h4>
@@ -727,11 +837,11 @@ else:
             st.subheader("🎒 내 장비 장식함 (인벤토리)")
             if my_items:
                 for mi in my_items:
-                    item_info = next((i for i in SHOP_ITEMS if i['id'] == mi), None)
-                    if item_info:
-                        st.markdown(f"- ✅ **{item_info['name']}** 장착 중")
+                    match_item = next((item for item in all_possible_shop_items if item['id'] == mi), None)
+                    if match_item:
+                        st.markdown(f"- ✅ **{match_item['name']}** (장착 완료)")
             else:
-                st.info("아직 구매한 장신구가 없습니다. 상점에서 아이템을 구매해보세요!")
+                st.info("아직 구매한 아이템이 없습니다. 상점에서 마음에 드는 장비를 구매해보세요!")
 
     elif selected_main_tab == "🤝 팀 조합":
         st.title("🤝 밴드 팀 조합 관리")
@@ -749,7 +859,6 @@ else:
                 shuffled_members = list(all_members_list)
                 random.shuffle(shuffled_members)
                 
-                # 팀별 바구니 생성
                 teams_result = {f"팀 {i+1}": [] for i in range(num_teams_rand)}
                 for idx, m in enumerate(shuffled_members):
                     t_key = f"팀 {(idx % num_teams_rand) + 1}"
@@ -769,7 +878,6 @@ else:
 
             manual_num_teams = st.number_input("편성할 팀 수 설정", min_value=1, max_value=10, value=2, key="manual_team_count")
             
-            # 각 팀별로 포함할 멤버 체크박스 선택 UI
             manual_team_allocation = {}
             for t_idx in range(manual_num_teams):
                 t_name = f"팀 {t_idx + 1}"
@@ -783,7 +891,6 @@ else:
 
             if st.button("💾 구성한 팀 저장하기", type="primary"):
                 if member['is_admin'] == 1:
-                    # 임시 공연을 하나 만들거나 선택해서 저장할 수도 있지만, 일반 팀 저장용 세션 저장소나 임시 공연 연결 가능
                     st.success("팀 구성 데이터가 준비되었습니다. '공연 관리' 탭에서 공연별로 팀을 확정 등록할 수 있습니다!")
                 else:
                     st.error("임원진 권한이 필요합니다.")
@@ -821,10 +928,8 @@ else:
                     st.markdown(f"### 🎪 {p['title']}")
                     st.caption(f"생성일: {p['created_at']}")
                     
-                    # 해당 공연의 팀 매핑 정보 불러오기
                     p_teams_rows = get_performance_teams(p['id'])
                     
-                    # 팀별로 그룹화
                     perf_teams_dict = {}
                     for row in p_teams_rows:
                         tname = row['team_name']
@@ -840,7 +945,6 @@ else:
                     else:
                         st.info("이 공연에 편성된 팀이 아직 없습니다.")
 
-                    # 임원진인 경우 이 공연의 팀을 편집할 수 있는 기능 제공
                     if member['is_admin'] == 1:
                         with st.expander(f"⚙️ '{p['title']}' 팀 편집 및 배정"):
                             edit_num_teams = st.number_input("이 공연의 팀 수", min_value=1, max_value=5, value=2, key=f"edit_perf_cnt_{p['id']}")
@@ -852,7 +956,6 @@ else:
                                 et_selected_ids = []
                                 for m in all_members_list:
                                     chk_key = f"perf_{p['id']}_t_{et_idx}_m_{m['id']}"
-                                    # 기존 배정 여부 확인 체크박스 기본값 설정 가능
                                     is_already_in = any(row['team_name'] == et_name and row['member_id'] == m['id'] for row in p_teams_rows)
                                     if st.checkbox(f"{m['name']} ({m['session']})", value=is_already_in, key=chk_key):
                                         et_selected_ids.append(m['id'])
