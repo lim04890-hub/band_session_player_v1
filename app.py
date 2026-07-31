@@ -124,9 +124,9 @@ init_db()
 # --- 오디오 및 유튜브 처리 로직 ---
 
 def download_youtube_audio(youtube_url, output_dir):
-    """유튜브 링크에서 오디오를 추출 (HTTP 403 차단 우회 옵션 강화)"""
+    """유튜브 403 에러 우회를 위한 최신 설정 적용"""
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'best',  
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -136,20 +136,30 @@ def download_youtube_audio(youtube_url, output_dir):
         'quiet': True,
         'noplaylist': True,
         'socket_timeout': 30,
-        # 403 에러 및 봇 차단을 우회하기 위한 브라우저 클라이언트 에뮬레이션
+        # 최신 403 차단 방어용 클라이언트 및 파라미터 재조정
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios', 'web'],
-                'skip': ['dash', 'hls']
+                'player_client': ['web', 'mweb'],
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-us,en;q=0.5',
-            'Sec-Fetch-Mode': 'navigate',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
         }
     }
+    
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(youtube_url, download=True)
+            filename = ydl.prepare_filename(info_dict)
+            base, _ = os.path.splitext(filename)
+            mp3_path = base + ".mp3"
+            song_title = info_dict.get('title', 'youtube_song')
+            song_title = "".join(c for c in song_title if c.isalnum() or c in (' ', '-', '_', '[', ']')).strip()
+        return mp3_path, song_title
+    except Exception as e:
+        raise RuntimeError(f"다운로드 실패: {e}")
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
