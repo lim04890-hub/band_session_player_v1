@@ -7,6 +7,7 @@ import sys
 import sqlite3
 import uuid
 import time
+import json
 from datetime import datetime
 import imageio_ffmpeg
 
@@ -203,7 +204,8 @@ def init_db():
                 inventory TEXT DEFAULT '',
                 practice_minutes INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
-                bio TEXT DEFAULT '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!'
+                bio TEXT DEFAULT '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!',
+                ensemble_stats INTEGER DEFAULT 0
             )
         ''')
         
@@ -219,7 +221,9 @@ def init_db():
             cursor.execute("ALTER TABLE members ADD COLUMN is_active INTEGER DEFAULT 1")
         if 'bio' not in columns:
             cursor.execute("ALTER TABLE members ADD COLUMN bio TEXT DEFAULT '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!'")
-        
+        if 'ensemble_stats' not in columns:
+            cursor.execute("ALTER TABLE members ADD COLUMN ensemble_stats INTEGER DEFAULT 0")
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -249,13 +253,25 @@ def init_db():
                 FOREIGN KEY (member_id) REFERENCES members (id) ON DELETE CASCADE
             )
         ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ensembles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                team_name TEXT NOT NULL,
+                member_ids TEXT NOT NULL,
+                is_active INTEGER DEFAULT 0,
+                start_time REAL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )
+        ''')
         
         cursor.execute("SELECT COUNT(*) FROM members")
         if cursor.fetchone()[0] == 0:
             for item in INITIAL_MEMBERS:
                 cursor.execute('''
-                    INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio)
-                    VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!')
+                    INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio, ensemble_stats)
+                    VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!', 0)
                 ''', item)
             
         conn.commit()
@@ -303,8 +319,8 @@ def add_member(name, department, student_id, session, is_admin):
     cursor = conn.cursor()
     try:
         cursor.execute('''
-            INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio)
-            VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!')
+            INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio, ensemble_stats)
+            VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!', 0)
         ''', (name.strip(), department.strip(), str(student_id).strip(), session, 1 if is_admin else 0))
         conn.commit()
         return True, "부원이 성공적으로 추가되었습니다."
@@ -344,7 +360,7 @@ def add_practice_time_and_credits(member_id, minutes, credits):
 def purchase_item_db(member_id, category_items, target_item_id, cost):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT credits, inventory FROM members WHERE id = ?", (member_id,))
+    cursor.execute("SELECT credits, inventory, ensemble_stats FROM members WHERE id = ?", (member_id,))
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -352,6 +368,7 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
     
     current_credits = row['credits']
     inventory = row['inventory'] or ""
+    current_ensemble_stats = row['ensemble_stats'] or 0
     items_list = [i.strip() for i in inventory.split(",") if i.strip()]
     
     if target_item_id in items_list:
@@ -370,6 +387,19 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
             conn.close()
             return False, f"이전 단계 아이템인 [{category_items[target_idx - 1]['name']}]을(를) 먼저 구매해야 합니다!"
 
+    # 합주 능력치 필요 조건 체크
+    req_ensemble_stat = 0
+    if cost == 3000:
+        req_ensemble_stat = 1
+    elif cost == 5000:
+        req_ensemble_stat = 3
+    elif cost >= 10000:
+        req_ensemble_stat = 5
+
+    if current_ensemble_stats < req_ensemble_stat:
+        conn.close()
+        return False, f"구매 실패: 합주 능력치가 {req_ensemble_stat}개 필요합니다. (현재 보유: {current_ensemble_stats}개)"
+
     if current_credits < cost:
         conn.close()
         return False, "크레딧이 부족합니다."
@@ -377,8 +407,10 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
     items_list.append(target_item_id)
     new_inventory = ",".join(items_list)
     new_credits = current_credits - cost
+    new_ensemble_stats = current_ensemble_stats - req_ensemble_stat
     
-    cursor.execute("UPDATE members SET credits = ?, inventory = ? WHERE id = ?", (new_credits, new_inventory, member_id))
+    cursor.execute("UPDATE members SET credits = ?, inventory = ?, ensemble_stats = ? WHERE id = ?", 
+                   (new_credits, new_inventory, new_ensemble_stats, member_id))
     conn.commit()
     conn.close()
     return True, "구매가 완료되었습니다!"
@@ -465,6 +497,96 @@ def get_performance_teams(perf_id):
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+def get_all_distinct_teams():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DISTINCT pt.team_name, p.title as perf_title
+        FROM performance_teams pt
+        JOIN performances p ON pt.performance_id = p.id
+    ''')
+    teams = cursor.fetchall()
+    conn.close()
+    return teams
+
+def get_members_by_team(team_name):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT m.id, m.name, m.department, m.session, m.inventory, m.bio
+        FROM performance_teams pt
+        JOIN members m ON pt.member_id = m.id
+        WHERE pt.team_name = ?
+    ''', (team_name,))
+    members = cursor.fetchall()
+    conn.close()
+    return members
+
+# --- 합주 DB 핸들러 ---
+
+def create_ensemble(name, team_name, member_ids):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    member_ids_str = ",".join(map(str, member_ids))
+    cursor.execute('''
+        INSERT INTO ensembles (name, team_name, member_ids, is_active, start_time, created_at)
+        VALUES (?, ?, ?, 0, 0, ?)
+    ''', (name, team_name, member_ids_str, now))
+    conn.commit()
+    conn.close()
+
+def get_all_ensembles():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ensembles ORDER BY id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def start_ensemble_db(ensemble_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now_ts = time.time()
+    # 기존 진행 중인 합주 모두 중지 처리
+    cursor.execute("UPDATE ensembles SET is_active = 0")
+    cursor.execute("UPDATE ensembles SET is_active = 1, start_time = ? WHERE id = ?", (now_ts, ensemble_id))
+    conn.commit()
+    conn.close()
+
+def stop_ensemble_db(ensemble_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ensembles WHERE id = ?", (ensemble_id,))
+    ens = cursor.fetchone()
+    
+    if ens and ens['is_active'] == 1:
+        start_t = ens['start_time']
+        elapsed_sec = time.time() - start_t
+        stats_earned = int(elapsed_sec // 1800) # 30분(1800초)당 1 능력치
+        
+        member_ids = [int(x.strip()) for x in ens['member_ids'].split(",") if x.strip()]
+        
+        if stats_earned > 0 and member_ids:
+            for m_id in member_ids:
+                cursor.execute("UPDATE members SET ensemble_stats = ensemble_stats + ? WHERE id = ?", (stats_earned, m_id))
+                
+        cursor.execute("UPDATE ensembles SET is_active = 0, start_time = 0 WHERE id = ?", (ensemble_id,))
+        conn.commit()
+        conn.close()
+        return stats_earned, len(member_ids)
+    
+    conn.close()
+    return 0, 0
+
+def get_active_ensemble():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ensembles WHERE is_active = 1 LIMIT 1")
+    ens = cursor.fetchone()
+    conn.close()
+    return dict(ens) if ens else None
 
 init_db()
 
@@ -560,8 +682,6 @@ if 'is_practicing' not in st.session_state:
 if 'practice_start_time' not in st.session_state:
     st.session_state['practice_start_time'] = None
 
-
-# --- 로그아웃 및 세션 종료 시 미정산 연습 자동 반영 함수 ---
 def handle_logout_or_stop():
     if st.session_state.get('is_practicing') and st.session_state.get('practice_start_time') and st.session_state.get('member'):
         elapsed_seconds = time.time() - st.session_state['practice_start_time']
@@ -616,8 +736,8 @@ else:
     top_col1, top_col2 = st.columns([3, 1])
     with top_col1:
         admin_badge = "👑 [임원진]" if member['is_admin'] == 1 else "🎵 [부원]"
-        practicing_indicator = " 🔴 [연습 타이머 작동 중]" if st.session_state['is_practicing'] else ""
-        st.markdown(f"{admin_badge} **{member['name']}** 님 (`{member['department']}` / {member['student_id']}학번 / `{member['session']}`) | 💰 **{member['credits']} 크레딧**{practicing_indicator}")
+        practicing_indicator = " 🔴 [개인 연습 중]" if st.session_state['is_practicing'] else ""
+        st.markdown(f"{admin_badge} **{member['name']}** 님 (`{member['department']}` / {member['student_id']}학번 / `{member['session']}`) | 💰 **{member['credits']} C** | ⚡ **합주 능력치: {member.get('ensemble_stats', 0)}개**{practicing_indicator}")
     with top_col2:
         if st.button("로그아웃"):
             handle_logout_or_stop()
@@ -626,13 +746,12 @@ else:
             st.session_state['current_project'] = None
             st.rerun()
 
-    base_tabs = ["🎵 내 작업실", "🎮 연습실 & 상점", "👥 부원 목록 및 아바타", "🤝 팀 조합", "🎪 공연 관리"]
+    base_tabs = ["🎵 내 작업실", "🎮 연습실 & 상점", "🎷 합주", "👥 부원 목록 및 아바타", "🤝 팀 조합", "🎪 공연 관리"]
     if member['is_admin'] == 1:
         base_tabs.append("⚙️ 임원 관리")
 
     selected_main_tab = st.radio("상단 메인 메뉴", base_tabs, horizontal=True, label_visibility="collapsed")
 
-    # 전체 가능한 장비 아이템 모음 정의 (아바타 표시용)
     all_possible_shop_items = []
     for cat, items in COMMON_SHOP_ITEMS.items():
         all_possible_shop_items.extend(items)
@@ -682,7 +801,7 @@ else:
                     f.write(uploaded_file.getbuffer())
 
                 if st.button("🚀 AI 세션 분리 및 저장 시작", type="primary", use_container_width=True):
-                    with st.spinner("AI가 곡의 6개 세션(기타, 보컬, 드럼, 베이스, 피아노, 기타 등)을 분리하는 중입니다..."):
+                    with st.spinner("AI가 곡의 6개 세션을 분리하는 중입니다..."):
                         try:
                             separated_dir = separate_audio(file_path, uploaded_file.name)
                             song_title = os.path.splitext(uploaded_file.name)[0]
@@ -727,7 +846,7 @@ else:
             st.markdown("#### ⚡ 재생 및 연습 옵션")
             col_spd, col_s, col_e = st.columns([1, 1, 1])
             with col_spd:
-                speed = st.slider("재생 속도 (카피 연습용)", 0.5, 2.0, 1.0, 0.1)
+                speed = st.slider("재생 속도", 0.5, 2.0, 1.0, 0.1)
             with col_s:
                 start_time = st.number_input("시작 구간 (초)", min_value=0, value=0)
             with col_e:
@@ -745,7 +864,7 @@ else:
 
                     with open(mixed_audio_path, "rb") as f:
                         st.download_button(
-                            label=f"📥 조합된 연습용 음원 다운로드 ({len(selected_stems)}개 세션 조합)",
+                            label=f"📥 연습용 음원 다운로드 ({len(selected_stems)}개 세션)",
                             data=f,
                             file_name=f"{project['song_title']}_HERTZ_mix.wav",
                             mime="audio/wav",
@@ -755,38 +874,41 @@ else:
             else:
                 st.info("하나 이상의 스템을 선택하면 플레이어가 활성화됩니다.")
 
-            st.markdown("---")
-            st.subheader("📂 개별 원본 스템 다운로드")
-            dl_cols = st.columns(3)
-            for idx, stem in enumerate(all_stems):
-                stem_path = os.path.join(separated_dir, f"{stem}.wav")
-                if os.path.exists(stem_path):
-                    with dl_cols[idx % 3]:
-                        with open(stem_path, "rb") as f:
-                            st.download_button(
-                                label=f"{stem_labels[stem]} 다운로드",
-                                data=f,
-                                file_name=f"{project['song_title']}_{stem}.wav",
-                                mime="audio/wav",
-                                use_container_width=True,
-                                key=f"dl_det_{stem}"
-                            )
-
     elif selected_main_tab == "🎮 연습실 & 상점":
         st.title("🎮 HERTZ 아케이드 연습실 & 상점")
-        st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 캐릭터 아바타에 장비와 아이템을 순서대로 장착해보세요! (1분당 30 크레딧)")
+        st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 캐릭터 아바타에 장비와 아이템을 순서대로 장착해보세요!")
 
-        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["🎸 연습 세션실 & 아바타", "🛍️ 확장 상점 & 인벤토리", "✏️ 내 한줄소개 설정"])
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["🎸 연습 세션실 & 무대", "🛍️ 확장 상점 & 인벤토리", "✏️ 내 한줄소개 설정"])
 
         inventory_str = member['inventory'] or ""
         my_items = [i.strip() for i in inventory_str.split(",") if i.strip()]
         user_practice_time = member['practice_minutes']
         user_title = get_title_by_practice_time(user_practice_time)
 
+        # 활성 합주 체크
+        active_ens = get_active_ensemble()
+
         with sub_tab1:
             st.subheader("무대 위 캐릭터 공연 애니메이션 & 타이머")
 
-            user_session = member.get('session', '기타')
+            # 활성 합주가 진행 중인 경우, 해당 팀 멤버들 전원을 무대에 렌더링
+            render_members = []
+            if active_ens and active_ens['is_active'] == 1:
+                ens_m_ids = [int(x.strip()) for x in active_ens['member_ids'].split(",") if x.strip()]
+                for mid in ens_m_ids:
+                    mobj = get_member_fresh(mid)
+                    if mobj:
+                        render_members.append({
+                            "name": mobj['name'],
+                            "session": mobj['session'],
+                            "inventory": [i.strip() for i in (mobj['inventory'] or "").split(",") if i.strip()]
+                        })
+            else:
+                render_members.append({
+                    "name": member['name'],
+                    "session": member['session'],
+                    "inventory": my_items
+                })
 
             equipped_display = []
             total_credits = 0
@@ -800,33 +922,36 @@ else:
 
             gear_text = " | ".join(equipped_display) if equipped_display else "기본 장비 착용 중"
             user_bio = member.get('bio') or "안녕하세요!"
-
-            # 크레딧 총합 비례 관중 수 계산 (최소 3명 ~ 최대 120명)
             audience_count = max(3, min(120, 3 + (total_credits // 200)))
 
             # 타이머 상태 계산
-            timer_html_status = ""
-            if st.session_state['is_practicing'] and st.session_state['practice_start_time']:
+            is_ensemble_mode = (active_ens and active_ens['is_active'] == 1)
+            is_anim_playing = st.session_state['is_practicing'] or is_ensemble_mode
+
+            if is_ensemble_mode:
+                ens_elapsed = int(time.time() - active_ens['start_time'])
+                mins = ens_elapsed // 60
+                secs = ens_elapsed % 60
+                timer_html_status = f"🎷 [팀 합주 진행 중] '{active_ens['name']}': {mins:02d}분 {secs:02d}초 (30분당 능력치 1개 적립)"
+            elif st.session_state['is_practicing'] and st.session_state['practice_start_time']:
                 current_elapsed_seconds = int(time.time() - st.session_state['practice_start_time'])
                 mins = current_elapsed_seconds // 60
                 secs = current_elapsed_seconds % 60
-                timer_html_status = f"⏱️ 연습 진행 중: {mins:02d}분 {secs:02d}초"
+                timer_html_status = f"⏱️ [개인 연습 진행 중]: {mins:02d}분 {secs:02d}초"
             else:
-                timer_html_status = "[타이머 대기 중 - 연습 시작 버튼을 누르세요]"
+                timer_html_status = "[타이머 대기 중 - 연습 시작 또는 합주 탭에서 합주를 시작하세요]"
 
-            st.write(f"**칭호:** {user_title} | **본래 세션:** {user_session} | **누적 연습 시간:** {user_practice_time}분")
+            st.write(f"**칭호:** {user_title} | **본래 세션:** {member['session']} | **누적 연습 시간:** {user_practice_time}분 | **⚡ 합주 능력치:** {member.get('ensemble_stats', 0)}개")
             st.write(f"**착용 장비:** {gear_text} | **장비 총 가치:** {total_credits:,} C | **관중 수:** {audience_count}명")
-            st.caption(f'"{user_bio}"')
 
-            # JavaScript 데이터 준비
-            items_json = str(equipped_display).replace("'", '"')
-            is_playing_str = "true" if st.session_state['is_practicing'] else "false"
+            # JavaScript에 넘길 부원 정보 JSON 구조 생성
+            members_json = json.dumps(render_members, ensure_ascii=False)
+            is_playing_str = "true" if is_anim_playing else "false"
 
-            # HTML5 Canvas 도트 애니메이션 무대
             stage_html = f"""
             <div style="text-align: center; background-color: #0d0d15; padding: 12px; border-radius: 10px; font-family: sans-serif;">
-                <div style="color: #00FF66; font-weight: bold; font-size: 16px; margin-bottom: 8px;">{timer_html_status}</div>
-                <canvas id="stageCanvas" width="600" height="260" style="border:2px solid #2a2a3d; image-rendering: pixelated; border-radius: 8px;"></canvas>
+                <div style="color: #00FF66; font-weight: bold; font-size: 15px; margin-bottom: 8px;">{timer_html_status}</div>
+                <canvas id="stageCanvas" width="620" height="260" style="border:2px solid #2a2a3d; image-rendering: pixelated; border-radius: 8px;"></canvas>
             </div>
 
             <script>
@@ -835,8 +960,7 @@ else:
             
             const isPlaying = {is_playing_str};
             const audienceCount = {audience_count};
-            const sessionType = "{user_session}";
-            const equippedItems = {items_json};
+            const bandMembers = {members_json};
 
             let frame = 0;
 
@@ -876,7 +1000,16 @@ else:
                 ctx.fillRect(0, canvas.height - 70, canvas.width, 2);
 
                 drawAmplifiers();
-                drawPixelCharacter();
+
+                // 무대 위 멤버들 가로로 균등 배치
+                const numMembers = bandMembers.length;
+                const spacing = canvas.width / (numMembers + 1);
+
+                bandMembers.forEach((m, idx) => {{
+                    const cx = spacing * (idx + 1);
+                    drawPixelCharacter(cx, m);
+                }});
+
                 drawAudience();
 
                 frame++;
@@ -885,26 +1018,24 @@ else:
 
             function drawAmplifiers() {{
                 ctx.fillStyle = '#1f1f2e';
-                ctx.fillRect(30, canvas.height - 120, 32, 50);
-                ctx.fillRect(canvas.width - 62, canvas.height - 120, 32, 50);
+                ctx.fillRect(20, canvas.height - 120, 28, 50);
+                ctx.fillRect(canvas.width - 48, canvas.height - 120, 28, 50);
                 
                 ctx.fillStyle = '#3a3a52';
                 ctx.beginPath();
-                ctx.arc(46, canvas.height - 105, 6, 0, Math.PI * 2);
-                ctx.arc(46, canvas.height - 85, 6, 0, Math.PI * 2);
-                ctx.arc(canvas.width - 46, canvas.height - 105, 6, 0, Math.PI * 2);
-                ctx.arc(canvas.width - 46, canvas.height - 85, 6, 0, Math.PI * 2);
+                ctx.arc(34, canvas.height - 105, 5, 0, Math.PI * 2);
+                ctx.arc(34, canvas.height - 85, 5, 0, Math.PI * 2);
+                ctx.arc(canvas.width - 34, canvas.height - 105, 5, 0, Math.PI * 2);
+                ctx.arc(canvas.width - 34, canvas.height - 85, 5, 0, Math.PI * 2);
                 ctx.fill();
             }}
 
-            function drawPixelCharacter() {{
-                const cx = canvas.width / 2;
+            function drawPixelCharacter(cx, mData) {{
                 let cy = canvas.height - 110;
-
-                const bounce = isPlaying ? Math.sin(frame * 0.2) * 3 : 0;
+                const bounce = isPlaying ? Math.sin(frame * 0.2 + cx) * 3 : 0;
                 cy += bounce;
 
-                // 머리 (Skin)
+                // 머리
                 ctx.fillStyle = '#ffe0bd';
                 ctx.fillRect(cx - 8, cy - 24, 16, 16);
 
@@ -917,26 +1048,23 @@ else:
                 ctx.fillStyle = '#3a2e2b';
                 ctx.fillRect(cx - 9, cy - 27, 18, 6);
 
-                // 장착 아이템 착용 시 시각화
-                const hasHeadgear = equippedItems.some(i => i.includes("스냅백") || i.includes("페도라") || i.includes("햇") || i.includes("크라운") || i.includes("선글라스"));
-                if (hasHeadgear) {{
-                    ctx.fillStyle = '#f35588';
-                    ctx.fillRect(cx - 10, cy - 29, 20, 5);
-                }}
+                // 이름 표시
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(mData.name, cx, cy - 32);
 
-                // 상의
+                // 상의 & 하의
                 ctx.fillStyle = '#0f3460';
                 ctx.fillRect(cx - 7, cy - 8, 14, 16);
-
-                // 하의/다리
                 ctx.fillStyle = '#16213e';
                 ctx.fillRect(cx - 6, cy + 8, 5, 12);
                 ctx.fillRect(cx + 1, cy + 8, 5, 12);
 
-                drawInstrument(cx, cy);
+                drawInstrument(cx, cy, mData.session);
             }}
 
-            function drawInstrument(cx, cy) {{
+            function drawInstrument(cx, cy, sessionType) {{
                 ctx.save();
                 if (sessionType === "기타" || sessionType === "베이스") {{
                     ctx.fillStyle = sessionType === "기타" ? '#FF2222' : '#00fff5';
@@ -946,27 +1074,16 @@ else:
                 }} else if (sessionType === "드럼") {{
                     ctx.fillStyle = '#f5abc9';
                     ctx.beginPath();
-                    ctx.arc(cx, cy + 8, 11, 0, Math.PI * 2);
+                    ctx.arc(cx, cy + 8, 10, 0, Math.PI * 2);
                     ctx.fill();
-                    const armAngle = isPlaying ? Math.sin(frame * 0.4) * 6 : 0;
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(cx - 6, cy - 2); ctx.lineTo(cx - 12, cy - 8 + armAngle);
-                    ctx.moveTo(cx + 6, cy - 2); ctx.lineTo(cx + 12, cy - 8 - armAngle);
-                    ctx.stroke();
                 }} else if (sessionType === "키보드") {{
                     ctx.fillStyle = '#ffffff';
-                    ctx.fillRect(cx - 18, cy + 2, 36, 7);
-                    ctx.fillStyle = '#000000';
-                    for (let k = -15; k < 15; k += 5) {{
-                        ctx.fillRect(cx + k, cy + 2, 3, 4);
-                    }}
+                    ctx.fillRect(cx - 14, cy + 2, 28, 6);
                 }} else if (sessionType === "보컬") {{
                     ctx.fillStyle = '#aaaaaa';
-                    ctx.fillRect(cx + 7, cy - 12, 2, 22);
+                    ctx.fillRect(cx + 6, cy - 12, 2, 20);
                     ctx.fillStyle = '#FF2222';
-                    ctx.fillRect(cx + 5, cy - 16, 6, 6);
+                    ctx.fillRect(cx + 4, cy - 16, 6, 6);
                 }}
                 ctx.restore();
             }}
@@ -979,11 +1096,6 @@ else:
                     ctx.fillStyle = p.color;
                     ctx.fillRect(p.x, drawY, 8, p.height);
                     ctx.fillRect(p.x + 1, drawY - 6, 6, 6);
-
-                    if (isPlaying && Math.random() > 0.65) {{
-                        ctx.fillRect(p.x - 2, drawY - 2, 2, 4);
-                        ctx.fillRect(p.x + 8, drawY - 2, 2, 4);
-                    }}
                 }});
             }}
 
@@ -996,7 +1108,7 @@ else:
             col_t_btn1, col_t_btn2 = st.columns(2)
             with col_t_btn1:
                 if not st.session_state['is_practicing']:
-                    if st.button("🔴 연습 시작", use_container_width=True, type="primary"):
+                    if st.button("🔴 개인 연습 시작", use_container_width=True, type="primary"):
                         st.session_state['is_practicing'] = True
                         st.session_state['practice_start_time'] = time.time()
                         st.rerun()
@@ -1009,7 +1121,7 @@ else:
                         elapsed_seconds = time.time() - st.session_state['practice_start_time']
                         elapsed_minutes = int(elapsed_seconds // 60)
                         if elapsed_minutes < 1:
-                            st.warning("⚠️ 연습 시간이 1분 미만입니다. 최소 1분 이상 연습해야 크레딧이 적립됩니다.")
+                            st.warning("⚠️ 1분 이상 연습해야 크레딧이 적립됩니다.")
                             st.session_state['is_practicing'] = False
                             st.session_state['practice_start_time'] = None
                         else:
@@ -1022,37 +1134,42 @@ else:
                 else:
                     st.button("⏹️ 정지됨", disabled=True, use_container_width=True)
 
-            if st.session_state['is_practicing']:
+            if st.session_state['is_practicing'] or is_ensemble_mode:
                 time.sleep(1)
                 st.rerun()
 
         with sub_tab2:
-            st.subheader("🛍️ 밴드 장비 및 패션 상점 (단계별 순차 구매)")
-            st.markdown(f"현재 보유 크레딧: **{member['credits']} 크레딧** | *※ 이전 단계 아이템을 순서대로 구매해야 다음 아이템을 살 수 있습니다.*")
+            st.subheader("🛍️ 밴드 장비 및 패션 상점")
+            st.markdown(f"보유 크레딧: **{member['credits']} C** | 보유 합주 능력치: **⚡ {member.get('ensemble_stats', 0)}개**")
+            st.info("💡 **상점 구매 조건:** 3,000 크레딧 아이템 = 합주 능력치 1개 소모 | 5,000 크레딧 = 3개 소모 | 10,000 크레딧 = 5개 소모")
             
             shop_tabs = st.tabs(["🧢 모자", "옷", "👟 신발", "💍 장신구", "🎗️ MD", "🎸 세션별 악기 장비"])
-
             categories = ["모자", "옷", "신발", "장신구", "MD"]
+
             for idx, cat_name in enumerate(categories):
                 with shop_tabs[idx]:
-                    st.markdown(f"### 🛒 {cat_name} 컬렉션 (단계별 순서대로 구매)")
+                    st.markdown(f"### 🛒 {cat_name} 컬렉션")
                     c_items = COMMON_SHOP_ITEMS[cat_name]
-                    
                     scols = st.columns(2)
                     for i, item in enumerate(c_items):
                         with scols[i % 2]:
                             is_owned = item['id'] in my_items
                             can_buy = True
-                            if i > 0:
-                                prev_id = c_items[i - 1]['id']
-                                if prev_id not in my_items:
-                                    can_buy = False
+                            if i > 0 and c_items[i - 1]['id'] not in my_items:
+                                can_buy = False
+
+                            req_stat = 0
+                            if item['cost'] == 3000: req_stat = 1
+                            elif item['cost'] == 5000: req_stat = 3
+                            elif item['cost'] >= 10000: req_stat = 5
+
+                            req_text = f" (필요 합주 능력치: {req_stat}개)" if req_stat > 0 else ""
 
                             st.markdown(f"""
                                 <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
                                     <h4>{item['name']}</h4>
                                     <p style="color: #ccc; font-size: 13px; margin: 5px 0;">{item['desc']}</p>
-                                    <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">가격: {item['cost']} 크레딧</p>
+                                    <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">가격: {item['cost']} C{req_text}</p>
                                 </div>
                             """, unsafe_allow_html=True)
                             
@@ -1070,9 +1187,7 @@ else:
                                         st.error(msg)
 
             with shop_tabs[5]:
-                st.markdown("### 🎸 세션별 악기 및 장비 상점 (단계별 순서대로 구매)")
-                st.caption("보컬이라도 기타나 건반 등 다른 세션의 장비를 단계별로 자유롭게 구매하여 장착할 수 있습니다!")
-                
+                st.markdown("### 🎸 세션별 악기 및 장비 상점")
                 selected_gear_session = st.selectbox("조회할 악기 세션 선택", ["기타", "베이스", "보컬", "드럼", "키보드"])
                 target_gear_list = SESSION_GEAR_ITEMS[selected_gear_session]
                 
@@ -1081,16 +1196,21 @@ else:
                     with g_cols[i % 2]:
                         is_owned = item['id'] in my_items
                         can_buy = True
-                        if i > 0:
-                            prev_id = target_gear_list[i - 1]['id']
-                            if prev_id not in my_items:
-                                can_buy = False
+                        if i > 0 and target_gear_list[i - 1]['id'] not in my_items:
+                            can_buy = False
+
+                        req_stat = 0
+                        if item['cost'] == 3000: req_stat = 1
+                        elif item['cost'] == 5000: req_stat = 3
+                        elif item['cost'] >= 10000: req_stat = 5
+
+                        req_text = f" (필요 합주 능력치: {req_stat}개)" if req_stat > 0 else ""
 
                         st.markdown(f"""
                             <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
                                 <h4>{item['name']}</h4>
                                 <p style="color: #ccc; font-size: 13px; margin: 5px 0;">{item['desc']}</p>
-                                <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">가격: {item['cost']} 크레딧</p>
+                                <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">가격: {item['cost']} C{req_text}</p>
                             </div>
                         """, unsafe_allow_html=True)
                         
@@ -1108,80 +1228,137 @@ else:
                                     st.error(msg)
 
             st.markdown("---")
-            st.subheader("🎒 내 장비 장식함 (인벤토리)")
+            st.subheader("🎒 내 장비 인벤토리")
             if my_items:
                 for mi in my_items:
                     match_item = next((item for item in all_possible_shop_items if item['id'] == mi), None)
                     if match_item:
-                        st.markdown(f"- ✅ **{match_item['name']}** (장착 완료)")
+                        st.markdown(f"- ✅ **{match_item['name']}**")
             else:
-                st.info("아직 구매한 아이템이 없습니다. 상점에서 마음에 드는 장비를 구매해보세요!")
+                st.info("보유한 아이템이 없습니다.")
 
         with sub_tab3:
-            st.subheader("✏️ 나만의 한줄소개 수정")
-            st.caption("부원 목록 및 내 작업실 카드에 표시될 한줄소개를 자유롭게 작성해보세요.")
-            
+            st.subheader("✏️ 한줄소개 수정")
             with st.form("bio_form"):
                 new_bio_input = st.text_input("한줄소개 입력", value=member.get('bio', ''))
-                bio_submit = st.form_submit_button("한줄소개 저장하기", use_container_width=True)
+                bio_submit = st.form_submit_button("저장하기", use_container_width=True)
                 if bio_submit:
                     update_member_bio(member['id'], new_bio_input)
-                    st.success("한줄소개가 성공적으로 업데이트되었습니다!")
+                    st.success("업데이트되었습니다!")
                     st.rerun()
+
+    elif selected_main_tab == "🎷 합주":
+        st.title("🎷 HERTZ 팀 합주실")
+        st.caption("팀 조합에서 생성된 팀을 선택하여 합주 세션을 개설하고 진행하세요! 30분당 모든 팀원에게 ⚡ 합주 능력치 1개가 적립됩니다.")
+
+        active_ens = get_active_ensemble()
+
+        # 현재 진행 중인 합주가 있다면 상단 안내
+        if active_ens and active_ens['is_active'] == 1:
+            st.markdown(f"""
+                <div style="background: #2b0505; border: 2px solid #FF2222; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 style="margin: 0; color: #00FF66;">🔴 현재 합주 진행 중: {active_ens['name']}</h3>
+                    <p style="margin: 5px 0 0 0; color: #ccc;">배정 팀: <b>{active_ens['team_name']}</b></p>
+                </div>
+            """, unsafe_allow_html=True)
+
+            if st.button("⏹️ 현재 합주 종료 및 능력치 정산", type="primary", use_container_width=True):
+                earned_stat, m_count = stop_ensemble_db(active_ens['id'])
+                st.success(f"🎉 합주가 종료되었습니다! 팀원 {m_count}명 전원에게 합주 능력치 **+{earned_stat}개**가 지급되었습니다.")
+                st.rerun()
+
+        st.markdown("---")
+        st.subheader("➕ 새 합주 개설하기")
+
+        # 기존 생성된 팀 목록 불러오기
+        distinct_teams = get_all_distinct_teams()
+
+        if not distinct_teams:
+            st.warning("⚠️ 선택 가능한 팀이 없습니다. 먼저 '🎪 공연 관리' 또는 '🤝 팀 조합' 탭에서 팀을 등록해주세요.")
+        else:
+            team_options = [f"{t['team_name']} ({t['perf_title']})" for t in distinct_teams]
+            
+            with st.form("create_ensemble_form"):
+                ens_title = st.text_input("합주 이름 (예: 정기공연 1팀 합주, 주말 연습 등)")
+                selected_team_str = st.selectbox("합주할 팀 선택", team_options)
+                
+                submit_ens = st.form_submit_button("합주 세션 등록하기", use_container_width=True)
+
+                if submit_ens:
+                    if ens_title.strip():
+                        target_team_name = selected_team_str.split(" (")[0]
+                        team_mems = get_members_by_team(target_team_name)
+                        
+                        if not team_mems:
+                            st.error("선택한 팀에 소속된 부원이 없습니다.")
+                        else:
+                            m_ids = [m['id'] for m in team_mems]
+                            create_ensemble(ens_title.strip(), target_team_name, m_ids)
+                            st.success(f"합주 '{ens_title.strip()}' 세션이 새로 생성되었습니다!")
+                            st.rerun()
+                    else:
+                        st.warning("합주 이름을 입력해주세요.")
+
+        st.markdown("---")
+        st.subheader("📋 개설된 합주 목록")
+        ensembles = get_all_ensembles()
+
+        if not ensembles:
+            st.info("개설된 합주 목록이 없습니다.")
+        else:
+            for e in ensembles:
+                with st.container():
+                    col_e1, col_e2 = st.columns([3, 1])
+                    with col_e1:
+                        status_str = "🔴 [진행 중]" if e['is_active'] == 1 else "⚪ [대기 중]"
+                        st.markdown(f"### {e['name']} {status_str}")
+                        st.caption(f"배정 팀: **{e['team_name']}** | 생성일: {e['created_at']}")
+                    with col_e2:
+                        if e['is_active'] == 0:
+                            if st.button("▶️ 합주 시작", key=f"start_ens_{e['id']}", use_container_width=True, type="primary"):
+                                start_ensemble_db(e['id'])
+                                st.success("합주가 시작되었습니다! 연습실&상점 탭 무대에서 팀원 전체 연주 모습을 확인할 수 있습니다.")
+                                st.rerun()
+                        else:
+                            st.button("🔴 진행 중", key=f"active_ens_btn_{e['id']}", disabled=True, use_container_width=True)
+                    st.markdown("---")
 
     elif selected_main_tab == "👥 부원 목록 및 아바타":
         st.title("👥 HERTZ 전체 부원 및 아바타 갤러리")
-        st.caption("모든 부원들의 한줄소개, 캐릭터 아바타, 총 연습 시간 및 착용 장비를 누구나 확인할 수 있습니다!")
-
-        filter_opt = st.radio("조회 범위 선택", ["활동 중인 부원만", "전체 명단 (탈퇴한 부원 포함)"], horizontal=True)
+        filter_opt = st.radio("조회 범위 선택", ["활동 중인 부원만", "전체 명단"], horizontal=True)
         
-        if filter_opt == "활동 중인 부원만":
-            display_members = get_all_active_members()
-        else:
-            display_members = get_all_members_including_inactive()
+        display_members = get_all_active_members() if filter_opt == "활동 중인 부원만" else get_all_members_including_inactive()
 
         for m in display_members:
             m_items = [i.strip() for i in (m['inventory'] or "").split(",") if i.strip()]
             m_time = m['practice_minutes']
             m_title = get_title_by_practice_time(m_time)
-            m_session = m['session']
             m_bio = m['bio'] or "안녕하세요!"
             
-            session_emojis = {
-                "기타": "🎸💥",
-                "베이스": "🎸🔥",
-                "보컬": "🎤✨",
-                "드럼": "🥁💥",
-                "키보드": "🎹🎶"
-            }
-            m_icon = session_emojis.get(m_session, "🎶")
+            session_emojis = {"기타": "🎸💥", "베이스": "🎸🔥", "보컬": "🎤✨", "드럼": "🥁💥", "키보드": "🎹🎶"}
+            m_icon = session_emojis.get(m['session'], "🎶")
 
             m_gear_names = []
             for mi in m_items:
                 match_obj = next((item for item in all_possible_shop_items if item['id'] == mi), None)
-                if match_obj:
-                    m_gear_names.append(match_obj['name'])
+                if match_obj: m_gear_names.append(match_obj['name'])
             m_gear_str = " | ".join(m_gear_names) if m_gear_names else "기본 장비 착용 중"
 
-            status_badge = "🟢 활동 중" if m['is_active'] == 1 else "⚪ [탈퇴/보존된 부원]"
+            status_badge = "🟢 활동 중" if m['is_active'] == 1 else "⚪ [탈퇴/보존]"
             admin_icon = "👑 " if m['is_admin'] == 1 else ""
 
             st.markdown(f"""
                 <div style="background: #141414; padding: 20px; border-radius: 10px; border: 1px solid #333; margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3 style="margin: 0; color: #fff;">{admin_icon}{m['name']} <span style="font-size: 14px; color: #888;">({m['department']} / {m['student_id']}학번 / {m_session})</span> {status_badge}</h3>
-                    </div>
-                    <p style="margin: 8px 0; color: #ff6666; font-size: 14px;"><b>칭호:</b> {m_title} (총 연습 시간: <b>{m_time}분</b>)</p>
-                    <p style="margin: 5px 0; font-style: italic; color: #ddd; background: #202020; padding: 6px 12px; border-radius: 6px; display: inline-block;">"{m_bio}"</p>
-                    <p style="margin: 10px 0 5px 0; font-size: 32px;"><span class="rock-character">{m_icon}</span></p>
-                    <p style="margin: 0; color: #aaa; font-size: 13px;"><b>착용 장비:</b> {m_gear_str}</p>
+                    <h3>{admin_icon}{m['name']} <span style="font-size: 14px; color: #888;">({m['department']} / {m['student_id']}학번 / {m['session']})</span> {status_badge}</h3>
+                    <p style="color: #ff6666; font-size: 14px; margin: 5px 0;"><b>칭호:</b> {m_title} | 연습시간: <b>{m_time}분</b> | ⚡ 합주 능력치: <b>{m.get('ensemble_stats', 0)}개</b></p>
+                    <p style="font-style: italic; color: #ddd; background: #202020; padding: 6px 12px; border-radius: 6px; display: inline-block;">"{m_bio}"</p>
+                    <p style="font-size: 32px; margin: 10px 0;">{m_icon}</p>
+                    <p style="color: #aaa; font-size: 13px; margin: 0;"><b>착용 장비:</b> {m_gear_str}</p>
                 </div>
             """, unsafe_allow_html=True)
 
     elif selected_main_tab == "🤝 팀 조합":
         st.title("🤝 밴드 팀 조합 관리")
-        st.caption("공연이나 합주를 위한 팀을 자동으로 무작위 조합하거나 임원진이 직접 구성할 수 있습니다.")
-
         team_sub1, team_sub2 = st.tabs(["🎲 랜덤 팀 균형 조합", "✍️ 임원진 직접 팀 편성"])
         all_active_list = get_all_active_members()
 
@@ -1191,29 +1368,20 @@ else:
             
             if st.button("🎲 세션 균형 자동 배분 실행", type="primary"):
                 import random
-                
-                # 세션별로 부원 분류
                 session_dict = {}
                 for m in all_active_list:
                     s = m['session']
-                    if s not in session_dict:
-                        session_dict[s] = []
+                    if s not in session_dict: session_dict[s] = []
                     session_dict[s].append(m)
                 
-                # 각 세션 내에서 무작위 셔플
-                for s in session_dict:
-                    random.shuffle(session_dict[s])
-                
-                # 팀 초기화
+                for s in session_dict: random.shuffle(session_dict[s])
                 teams_result = {f"팀 {i+1}": [] for i in range(num_teams_rand)}
                 
-                # 세션별로 각 팀에 골고루 분배
                 for s, members in session_dict.items():
                     for idx, m in enumerate(members):
-                        t_key = f"팀 {(idx % num_teams_rand) + 1}"
-                        teams_result[t_key].append(m)
+                        teams_result[f"팀 {(idx % num_teams_rand) + 1}"].append(m)
                 
-                st.success("세션이 균형 있게 배분된 팀 편성이 완료되었습니다!")
+                st.success("팀 편성이 완료되었습니다!")
                 for t_name, members in teams_result.items():
                     st.markdown(f"### 🎸 {t_name}")
                     for m in members:
@@ -1223,67 +1391,43 @@ else:
         with team_sub2:
             st.subheader("임원진 직접 팀 지정 편성")
             if member['is_admin'] == 0:
-                st.warning("⚠️ 직접 팀 편성은 임원진 권한 부원만 저장할 수 있습니다. (조회 및 시뮬레이션은 가능합니다)")
+                st.warning("⚠️ 직접 팀 편성은 임원진 권한 부원만 저장할 수 있습니다.")
 
             manual_num_teams = st.number_input("편성할 팀 수 설정", min_value=1, max_value=10, value=2, key="manual_team_count")
-            
-            manual_team_allocation = {}
             for t_idx in range(manual_num_teams):
                 t_name = f"팀 {t_idx + 1}"
                 with st.expander(f"📌 {t_name} 멤버 구성"):
-                    selected_m_ids = []
                     for m in all_active_list:
-                        chk = st.checkbox(f"{m['name']} ({m['session']} / {m['department']})", key=f"t_{t_idx}_m_{m['id']}")
-                        if chk:
-                            selected_m_ids.append(m['id'])
-                    manual_team_allocation[t_name] = selected_m_ids
-
-            if st.button("💾 구성한 팀 저장하기", type="primary"):
-                if member['is_admin'] == 1:
-                    st.success("팀 구성 데이터가 준비되었습니다. '공연 관리' 탭에서 공연별로 팀을 확정 등록할 수 있습니다!")
-                else:
-                    st.error("임원진 권한이 필요합니다.")
+                        st.checkbox(f"{m['name']} ({m['session']} / {m['department']})", key=f"t_{t_idx}_m_{m['id']}")
 
     elif selected_main_tab == "🎪 공연 관리":
         st.title("🎪 공연별 팀 세팅 관리")
-        st.caption("여러 개의 공연을 생성하고, 공연마다 서로 다른 팀 조합을 완벽하게 분리하여 관리하세요.")
-
         performances = get_all_performances()
 
         with st.expander("➕ 새 공연 생성하기 (임원진 전용)"):
             with st.form("new_perf_form"):
-                perf_title_input = st.text_input("공연 이름 (예: 2026 정기 공연, 버스킹 등)")
+                perf_title_input = st.text_input("공연 이름")
                 perf_submit = st.form_submit_button("공연 추가")
                 if perf_submit:
-                    if perf_title_input.strip():
-                        if member['is_admin'] == 1:
-                            create_performance(perf_title_input.strip())
-                            st.success(f"'{perf_title_input.strip()}' 공연이 생성되었습니다!")
-                            st.rerun()
-                        else:
-                            st.error("임원진 권한만 공연을 생성할 수 있습니다.")
-                    else:
-                        st.warning("공연 이름을 입력해주세요.")
+                    if perf_title_input.strip() and member['is_admin'] == 1:
+                        create_performance(perf_title_input.strip())
+                        st.success(f"'{perf_title_input.strip()}' 공연이 생성되었습니다!")
+                        st.rerun()
 
         st.markdown("---")
-        st.subheader("📋 등록된 공연 목록 및 팀 현황")
-
         if not performances:
-            st.info("등록된 공연이 없습니다. 위에서 새 공연을 생성해보세요.")
+            st.info("등록된 공연이 없습니다.")
         else:
             all_active_list = get_all_active_members()
             for p in performances:
                 with st.container():
                     st.markdown(f"### 🎪 {p['title']}")
-                    st.caption(f"생성일: {p['created_at']}")
-                    
                     p_teams_rows = get_performance_teams(p['id'])
                     
                     perf_teams_dict = {}
                     for row in p_teams_rows:
                         tname = row['team_name']
-                        if tname not in perf_teams_dict:
-                            perf_teams_dict[tname] = []
+                        if tname not in perf_teams_dict: perf_teams_dict[tname] = []
                         perf_teams_dict[tname].append(row)
 
                     if perf_teams_dict:
@@ -1291,84 +1435,64 @@ else:
                             st.markdown(f"**🔹 {tname}**")
                             for m in members:
                                 st.write(f"&nbsp;&nbsp;&nbsp;&nbsp;- {m['name']} (`{m['session']}` / {m['department']})")
-                    else:
-                        st.info("이 공연에 편성된 팀이 아직 없습니다.")
 
                     if member['is_admin'] == 1:
                         with st.expander(f"⚙️ '{p['title']}' 팀 편집 및 배정"):
-                            edit_num_teams = st.number_input("이 공연의 팀 수", min_value=1, max_value=5, value=2, key=f"edit_perf_cnt_{p['id']}")
-                            
+                            edit_num_teams = st.number_input("팀 수", min_value=1, max_value=5, value=2, key=f"edit_perf_cnt_{p['id']}")
                             current_perf_team_dict = {}
                             for et_idx in range(edit_num_teams):
                                 et_name = f"팀 {et_idx + 1}"
-                                st.markdown(f"**{et_name} 멤버 선택**")
                                 et_selected_ids = []
                                 for m in all_active_list:
-                                    chk_key = f"perf_{p['id']}_t_{et_idx}_m_{m['id']}"
                                     is_already_in = any(row['team_name'] == et_name and row['member_id'] == m['id'] for row in p_teams_rows)
-                                    if st.checkbox(f"{m['name']} ({m['session']})", value=is_already_in, key=chk_key):
+                                    if st.checkbox(f"{m['name']} ({m['session']})", value=is_already_in, key=f"perf_{p['id']}_t_{et_idx}_m_{m['id']}"):
                                         et_selected_ids.append(m['id'])
                                 current_perf_team_dict[et_name] = et_selected_ids
 
-                            if st.button(f"💾 '{p['title']}' 팀 구성 저장", key=f"save_perf_btn_{p['id']}"):
+                            if st.button(f"💾 팀 구성 저장", key=f"save_perf_btn_{p['id']}"):
                                 save_performance_teams(p['id'], current_perf_team_dict)
-                                st.success("공연 팀 구성이 성공적으로 저장되었습니다!")
+                                st.success("저장되었습니다!")
                                 st.rerun()
 
                         if st.button(f"🗑️ 공연 삭제", key=f"del_perf_{p['id']}"):
                             delete_performance(p['id'])
-                            st.success("공연이 삭제되었습니다.")
                             st.rerun()
-
                     st.markdown("---")
 
     elif selected_main_tab == "⚙️ 임원 관리" and member['is_admin'] == 1:
         st.title("⚙️ HERTZ 멤버 및 권한 관리 (임원 전용)")
-        st.caption("부원을 추가하고, 탈퇴 처리(아카이브 보존) 및 권한을 관리할 수 있습니다.")
-        
-        tab_add, tab_manage = st.tabs(["➕ 부원 추가", "📋 부원 목록 및 탈퇴(보존) 관리"])
+        tab_add, tab_manage = st.tabs(["➕ 부원 추가", "📋 부원 목록 관리"])
         
         with tab_add:
-            st.subheader("신규 부원 등록")
             with st.form("add_member_form"):
                 new_name = st.text_input("이름")
                 new_dept = st.text_input("학과")
-                new_id = st.text_input("학번 두 자리 (예: 25)")
+                new_id = st.text_input("학번 두 자리")
                 new_session = st.selectbox("세션", ["보컬", "기타", "베이스", "드럼", "키보드"], key="add_session")
                 new_is_admin = st.checkbox("임원진 권한 부여")
                 
                 add_submit = st.form_submit_button("부원 추가하기", use_container_width=True)
-                if add_submit:
-                    if new_name.strip() and new_dept.strip() and new_id.strip():
-                        success, msg = add_member(new_name, new_dept, new_id, new_session, new_is_admin)
-                        if success:
-                            st.success(msg)
-                            st.rerun()
-                        else:
-                            st.error(msg)
-                    else:
-                        st.warning("모든 필드를 올바르게 입력해주세요.")
+                if add_submit and new_name.strip() and new_dept.strip() and new_id.strip():
+                    success, msg = add_member(new_name, new_dept, new_id, new_session, new_is_admin)
+                    if success:
+                        st.success(msg)
+                        st.rerun()
 
         with tab_manage:
-            st.subheader("부원 상태 및 임원진 권한 설정")
             all_members_full = get_all_members_including_inactive()
-            
             for m in all_members_full:
                 with st.container():
                     col_info, col_admin, col_active = st.columns([2.5, 1.2, 1.3])
                     with col_info:
-                        role_icon = "👑" if m['is_admin'] == 1 else "👤"
-                        st.markdown(f"{role_icon} **{m['name']}** ({m['department']} / {m['student_id']}학번 / `{m['session']}`)")
+                        st.markdown(f"**{m['name']}** ({m['department']} / {m['student_id']}학번 / `{m['session']}`)")
                     with col_admin:
-                        current_admin = bool(m['is_admin'])
-                        new_admin = st.checkbox("임원진", value=current_admin, key=f"admin_chk_{m['id']}")
-                        if new_admin != current_admin:
+                        new_admin = st.checkbox("임원진", value=bool(m['is_admin']), key=f"admin_chk_{m['id']}")
+                        if new_admin != bool(m['is_admin']):
                             update_member_admin(m['id'], new_admin)
                             st.rerun()
                     with col_active:
-                        current_active = bool(m['is_active'])
-                        new_active = st.checkbox("활동 중", value=current_active, key=f"active_chk_{m['id']}")
-                        if new_active != current_active:
+                        new_active = st.checkbox("활동 중", value=bool(m['is_active']), key=f"active_chk_{m['id']}")
+                        if new_active != bool(m['is_active']):
                             set_member_active_status(m['id'], new_active)
                             st.rerun()
                     st.markdown("---")
