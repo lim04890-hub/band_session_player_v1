@@ -124,7 +124,7 @@ init_db()
 # --- 오디오 및 유튜브 처리 로직 ---
 
 def download_youtube_audio(youtube_url, output_dir):
-    """유튜브 포맷 오류 해결을 위한 오디오 전용 포맷 지정 적용"""
+    """유튜브 403 오류 우회를 위한 web_embedded 클라이언트 적용"""
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -136,10 +136,10 @@ def download_youtube_audio(youtube_url, output_dir):
         'quiet': True,
         'noplaylist': True,
         'socket_timeout': 30,
-        # 최신 유튜브 포맷 차단 방어 인자
+        # 403 에러 회피율이 가장 높은 embed 클라이언트 지정
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web']
+                'player_client': ['web_embedded', 'mweb'],
             }
         },
         'http_headers': {
@@ -158,31 +158,6 @@ def download_youtube_audio(youtube_url, output_dir):
         return mp3_path, song_title
     except Exception as e:
         raise RuntimeError(f"다운로드 실패: {e}")
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(youtube_url, download=True)
-            filename = ydl.prepare_filename(info_dict)
-            base, _ = os.path.splitext(filename)
-            mp3_path = base + ".mp3"
-            song_title = info_dict.get('title', 'youtube_song')
-            song_title = "".join(c for c in song_title if c.isalnum() or c in (' ', '-', '_', '[', ']')).strip()
-        return mp3_path, song_title
-    except Exception as e:
-        raise RuntimeError(f"다운로드 실패: {e}")
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(youtube_url, download=True)
-            filename = ydl.prepare_filename(info_dict)
-            base, _ = os.path.splitext(filename)
-            mp3_path = base + ".mp3"
-            song_title = info_dict.get('title', 'youtube_song')
-            song_title = "".join(c for c in song_title if c.isalnum() or c in (' ', '-', '_', '[', ']')).strip()
-        return mp3_path, song_title
-    except Exception as e:
-        raise RuntimeError(f"유튜브 다운로드 차단됨 (403 Forbidden). 다른 영상 링크로 시도하거나 잠시 후 다시 시도해주세요. 상세: {e}")
-
 def separate_audio(file_path, filename):
     env = os.environ.copy()
     env["OMP_NUM_THREADS"] = "2"
