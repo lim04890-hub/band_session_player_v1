@@ -124,7 +124,7 @@ init_db()
 # --- 오디오 및 유튜브 처리 로직 ---
 
 def download_youtube_audio(youtube_url, output_dir):
-    """유튜브 링크에서 오디오를 추출하여 MP3로 다운로드 (차단 우회 옵션 포함)"""
+    """유튜브 링크에서 오디오를 추출 (HTTP 403 차단 우회 옵션 강화)"""
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -135,9 +135,20 @@ def download_youtube_audio(youtube_url, output_dir):
         'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
         'quiet': True,
         'noplaylist': True,
-        # 유튜브 서버 차단 방지용 에뮬레이션 헤더
         'socket_timeout': 30,
-        'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+        # 403 에러 및 봇 차단을 우회하기 위한 브라우저 클라이언트 에뮬레이션
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'web'],
+                'skip': ['dash', 'hls']
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate',
+        }
     }
     
     try:
@@ -147,11 +158,10 @@ def download_youtube_audio(youtube_url, output_dir):
             base, _ = os.path.splitext(filename)
             mp3_path = base + ".mp3"
             song_title = info_dict.get('title', 'youtube_song')
-            # 파일명에 쓸 수 없는 특수문자 제거
             song_title = "".join(c for c in song_title if c.isalnum() or c in (' ', '-', '_', '[', ']')).strip()
         return mp3_path, song_title
     except Exception as e:
-        raise RuntimeError(f"유튜브 다운로드 실패 (링크를 확인하거나 잠시 후 다시 시도하세요): {e}")
+        raise RuntimeError(f"유튜브 다운로드 차단됨 (403 Forbidden). 다른 영상 링크로 시도하거나 잠시 후 다시 시도해주세요. 상세: {e}")
 
 def separate_audio(file_path, filename):
     env = os.environ.copy()
