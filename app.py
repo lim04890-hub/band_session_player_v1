@@ -1339,20 +1339,23 @@ else:
             m_icon = session_emojis.get(m['session'], "🎶")
 
             m_gear_names = []
-            for item in members:
-    # item이 dict인지 확인 후 처리
-    m = item if isinstance(item, dict) else members.get(item, {})
-    
-    m_title = m.get('title', '칭호 없음') if isinstance(m, dict) else getattr(m, 'title', '칭호 없음')
-    m_time = m.get('practice_time', 0) if isinstance(m, dict) else getattr(m, 'practice_time', 0)
-    m_stats = m.get('ensemble_stats', 0) if isinstance(m, dict) else getattr(m, 'ensemble_stats', 0)
+            for mi in m_items:
+                match_obj = next((item for item in all_possible_shop_items if item['id'] == mi), None)
+                if match_obj: m_gear_names.append(match_obj['name'])
+            m_gear_str = " | ".join(m_gear_names) if m_gear_names else "기본 장비 착용 중"
 
-    st.markdown(
-        f'<p style="color: #ff6666; font-size: 14px; margin: 5px 0;">'
-        f'<b>칭호:</b> {m_title} | 연습시간: <b>{m_time}분</b> | ⚡ 합주 능력치: <b>{m_stats}개</b>'
-        f'</p>',
-        unsafe_allow_html=True
-    )
+            status_badge = "🟢 활동 중" if m['is_active'] == 1 else "⚪ [탈퇴/보존]"
+            admin_icon = "👑 " if m['is_admin'] == 1 else ""
+
+            st.markdown(f"""
+                <div style="background: #141414; padding: 20px; border-radius: 10px; border: 1px solid #333; margin-bottom: 15px;">
+                    <h3>{admin_icon}{m['name']} <span style="font-size: 14px; color: #888;">({m['department']} / {m['student_id']}학번 / {m['session']})</span> {status_badge}</h3>
+                    <p style="color: #ff6666; font-size: 14px; margin: 5px 0;"><b>칭호:</b> {m_title} | 연습시간: <b>{m_time}분</b> | ⚡ 합주 능력치: <b>{m.get('ensemble_stats', 0)}개</b></p>
+                    <p style="font-style: italic; color: #ddd; background: #202020; padding: 6px 12px; border-radius: 6px; display: inline-block;">"{m_bio}"</p>
+                    <p style="font-size: 32px; margin: 10px 0;">{m_icon}</p>
+                    <p style="color: #aaa; font-size: 13px; margin: 0;"><b>착용 장비:</b> {m_gear_str}</p>
+                </div>
+            """, unsafe_allow_html=True)
 
     elif selected_main_tab == "🤝 팀 조합":
         st.title("🤝 밴드 팀 조합 관리")
