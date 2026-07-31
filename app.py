@@ -794,27 +794,237 @@ else:
         user_practice_time = member['practice_minutes']
         user_title = get_title_by_practice_time(user_practice_time)
 
-        with sub_tab1:
-            st.subheader("무대 위 캐릭터 공연 애니메이션 & 타이머")
-            
-            user_session = member['session']
-            session_emojis = {
-                "기타": "🎸💥",
-                "베이스": "🎸🔥",
-                "보컬": "🎤✨",
-                "드럼": "🥁💥",
-                "키보드": "🎹🎶"
-            }
-            char_icon = session_emojis.get(user_session, "🎶")
-            
-            equipped_display = []
-            for mi in my_items:
-                match_obj = next((item for item in all_possible_shop_items if item['id'] == mi), None)
-                if match_obj:
-                    equipped_display.append(match_obj['name'])
+        import streamlit as st
+import streamlit.components.v1 as components
 
-            gear_text = " | ".join(equipped_display) if equipped_display else "기본 장비 착용 중"
-            user_bio = member['bio'] or "안녕하세요!"
+with sub_tab1:
+    st.subheader("무대 위 캐릭터 공연 애니메이션 & 타이머")
+    
+    user_session = member.get('session', '기타')
+    
+    # 1. 보유 아이템 파싱 및 총 크레딧(가치) 계산
+    equipped_display = []
+    total_credits = 0
+
+    for mi in my_items:
+        match_obj = next((item for item in all_possible_shop_items if item['id'] == mi), None)
+        if match_obj:
+            equipped_display.append(match_obj['name'])
+            # 아이템 딕셔너리의 크레딧/가격 키값 반영 (없을 경우 기본값 처리)
+            item_cost = match_obj.get('price') or match_obj.get('credit') or match_obj.get('cost') or 100
+            total_credits += item_cost
+
+    gear_text = " | ".join(equipped_display) if equipped_display else "기본 장비 착용 중"
+    user_bio = member.get('bio') or "안녕하세요!"
+
+    # 2. 크레딧 총합 비례 관중 수 계산 (최소 3명 ~ 최대 120명 제한)
+    # 100 크레딧 당 관중 1명 추가
+    audience_count = max(3, min(120, 3 + (total_credits // 100)))
+
+    # 3. 연습 상태 토글 관리
+    if "is_practicing" not in st.session_state:
+        st.session_state.is_practicing = False
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        btn_label = "연습 중단" if st.session_state.is_practicing else "연습 시작"
+        if st.button(btn_label):
+            st.session_state.is_practicing = not st.session_state.is_practicing
+
+    st.write(f"**착용 장비:** {gear_text} | **총 장비 가치:** {total_credits:,} C | **관중 수:** {audience_count}명")
+
+    # 4. JavaScript에 전달할 데이터 준비
+    items_json = str(equipped_display).replace("'", '"')
+    is_playing_str = "true" if st.session_state.is_practicing else "false"
+
+    # 5. HTML5 Canvas 도트 캐릭터 & 무대/관중 애니메이션
+    stage_html = f"""
+    <div style="text-align: center; background-color: #0d0d15; padding: 10px; border-radius: 10px;">
+        <canvas id="stageCanvas" width="600" height="280" style="border:2px solid #2a2a3d; image-rendering: pixelated; border-radius: 8px;"></canvas>
+    </div>
+
+    <script>
+    const canvas = document.getElementById('stageCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    const isPlaying = {is_playing_str};
+    const audienceCount = {audience_count};
+    const sessionType = "{user_session}";
+    const equippedItems = {items_json};
+
+    let frame = 0;
+
+    // 관중 무작위 생성 (크레딧 수 비례)
+    const crowd = [];
+    for (let i = 0; i < audienceCount; i++) {{
+        crowd.push({{
+            x: Math.random() * (canvas.width - 20) + 10,
+            y: canvas.height - 20 + Math.random() * 12,
+            height: 12 + Math.random() * 6,
+            color: ['#4A5568', '#718096', '#A0AEC0', '#ED8936', '#9F7AEA', '#48BB78'][Math.floor(Math.random() * 6)],
+            offset: Math.random() * Math.PI * 2
+        }});
+    }}
+
+    function render() {{
+        // 1. 무대 배경
+        ctx.fillStyle = '#0a0a16';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 2. 조명 애니메이션 (연습 중일 때 상단 조명 플래시)
+        if (isPlaying) {{
+            const hue1 = (frame * 2) % 360;
+            const hue2 = (frame * 2 + 120) % 360;
+            
+            ctx.fillStyle = `hsla(${{hue1}}, 80%, 50%, 0.12)`;
+            ctx.beginPath();
+            ctx.moveTo(80, 0); ctx.lineTo(0, canvas.height - 60); ctx.lineTo(220, canvas.height - 60);
+            ctx.fill();
+
+            ctx.fillStyle = `hsla(${{hue2}}, 80%, 50%, 0.12)`;
+            ctx.beginPath();
+            ctx.moveTo(canvas.width - 80, 0); ctx.lineTo(canvas.width - 220, canvas.height - 60); ctx.lineTo(canvas.width, canvas.height - 60);
+            ctx.fill();
+        }}
+
+        // 3. 무대 상단 및 바닥 (Stage Floor)
+        ctx.fillStyle = '#161625';
+        ctx.fillRect(0, canvas.height - 75, canvas.width, 40);
+        ctx.fillStyle = '#e94560';
+        ctx.fillRect(0, canvas.height - 75, canvas.width, 2); // 무대 라인
+
+        // 앰프 및 스피커
+        drawAmplifiers();
+
+        // 4. 메인 도트 캐릭터
+        drawPixelCharacter();
+
+        // 5. 관중 렌더링
+        drawAudience();
+
+        frame++;
+        requestAnimationFrame(render);
+    }}
+
+    function drawAmplifiers() {{
+        ctx.fillStyle = '#1f1f2e';
+        ctx.fillRect(30, canvas.height - 125, 32, 50);
+        ctx.fillRect(canvas.width - 62, canvas.height - 125, 32, 50);
+        
+        ctx.fillStyle = '#3a3a52';
+        ctx.beginPath();
+        ctx.arc(46, canvas.height - 110, 7, 0, Math.PI * 2);
+        ctx.arc(46, canvas.height - 90, 7, 0, Math.PI * 2);
+        ctx.arc(canvas.width - 46, canvas.height - 110, 7, 0, Math.PI * 2);
+        ctx.arc(canvas.width - 46, canvas.height - 90, 7, 0, Math.PI * 2);
+        ctx.fill();
+    }}
+
+    function drawPixelCharacter() {{
+        const cx = canvas.width / 2;
+        let cy = canvas.height - 115;
+
+        // 공연 바운스 동작
+        const bounce = isPlaying ? Math.sin(frame * 0.2) * 3 : 0;
+        cy += bounce;
+
+        // 머리 (Skin)
+        ctx.fillStyle = '#ffe0bd';
+        ctx.fillRect(cx - 8, cy - 24, 16, 16);
+
+        // 눈
+        ctx.fillStyle = '#111';
+        ctx.fillRect(cx - 5, cy - 18, 3, 3);
+        ctx.fillRect(cx + 2, cy - 18, 3, 3);
+
+        // 머리카락
+        ctx.fillStyle = '#3a2e2b';
+        ctx.fillRect(cx - 9, cy - 27, 18, 6);
+
+        // 아이템 가공 (의상/모자 착용 여부 감지 예시)
+        const hasHeadgear = equippedItems.some(i => i.includes("모자") || i.includes("헤드폰") || i.includes("선글라스"));
+        if (hasHeadgear) {{
+            ctx.fillStyle = '#f35588';
+            ctx.fillRect(cx - 10, cy - 29, 20, 5); // 헤드기어/모자
+        }}
+
+        // 상의
+        ctx.fillStyle = '#0f3460';
+        ctx.fillRect(cx - 7, cy - 8, 14, 16);
+
+        // 하의/다리
+        ctx.fillStyle = '#16213e';
+        ctx.fillRect(cx - 6, cy + 8, 5, 12);
+        ctx.fillRect(cx + 1, cy + 8, 5, 12);
+
+        // 세션 악기 렌더링
+        drawInstrument(cx, cy);
+    }}
+
+    function drawInstrument(cx, cy) {{
+        ctx.save();
+        if (sessionType === "기타" || sessionType === "베이스") {{
+            // 바디
+            ctx.fillStyle = sessionType === "기타" ? '#e94560' : '#00fff5';
+            ctx.fillRect(cx - 12, cy - 2, 10, 8);
+            // 넥
+            ctx.fillStyle = '#8d5524';
+            ctx.fillRect(cx - 3, cy - 5, 16, 3);
+        }} else if (sessionType === "드럼") {{
+            // 드럼통
+            ctx.fillStyle = '#f5abc9';
+            ctx.beginPath();
+            ctx.arc(cx, cy + 8, 11, 0, Math.PI * 2);
+            ctx.fill();
+            // 스틱 애니메이션
+            const armAngle = isPlaying ? Math.sin(frame * 0.4) * 6 : 0;
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - 6, cy - 2); ctx.lineTo(cx - 12, cy - 8 + armAngle);
+            ctx.moveTo(cx + 6, cy - 2); ctx.lineTo(cx + 12, cy - 8 - armAngle);
+            ctx.stroke();
+        }} else if (sessionType === "키보드") {{
+            // 건반
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(cx - 18, cy + 2, 36, 7);
+            ctx.fillStyle = '#000000';
+            for (let k = -15; k < 15; k += 5) {{
+                ctx.fillRect(cx + k, cy + 2, 3, 4);
+            }}
+        }} else if (sessionType === "보컬") {{
+            // 마이크 스탠드
+            ctx.fillStyle = '#aaaaaa';
+            ctx.fillRect(cx + 7, cy - 12, 2, 22);
+            ctx.fillStyle = '#e94560';
+            ctx.fillRect(cx + 5, cy - 16, 6, 6);
+        }}
+        ctx.restore();
+    }}
+
+    function drawAudience() {{
+        crowd.forEach((p) => {{
+            // 연습 진행 중일 때 점프/응원 동작
+            const jump = isPlaying ? Math.abs(Math.sin(frame * 0.25 + p.offset)) * 7 : 0;
+            const drawY = p.y - jump;
+
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, drawY, 8, p.height); // 관중 몸통
+            ctx.fillRect(p.x + 1, drawY - 6, 6, 6);  // 관중 머리
+
+            if (isPlaying && Math.random() > 0.65) {{
+                // 손 들어올리기 (응원 효과)
+                ctx.fillRect(p.x - 2, drawY - 2, 2, 4);
+                ctx.fillRect(p.x + 8, drawY - 2, 2, 4);
+            }}
+        }});
+    }}
+
+    render();
+    </script>
+    """
+
+    components.html(stage_html, height=310)
 
             # 타이머 상태 표시 및 계산
             timer_html_status = ""
