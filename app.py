@@ -8,6 +8,7 @@ import hashlib
 import uuid
 from datetime import datetime
 import imageio_ffmpeg
+import yt_dlp
 
 # 디렉토리 및 DB 설정
 UPLOAD_DIR = "uploaded_audio"
@@ -24,7 +25,6 @@ st.set_page_config(page_title="Session Master", page_icon="🎸", layout="center
 # --- 데이터베이스 (SQLite) 안정성 강화 연동 로직 ---
 
 def get_db_connection():
-    # 동시 접속 잠금(Database Locked) 방지를 위해 timeout을 30초로 늘리고 WAL 모드 적용
     conn = sqlite3.connect(DB_FILE, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
@@ -121,10 +121,39 @@ def delete_project(project_id, user_id):
 
 init_db()
 
-# --- 오디오 처리 로직 ---
+# --- 오디오 및 유튜브 처리 로직 ---
+
+def download_youtube_audio(youtube_url, output_dir):
+    """유튜브 링크에서 오디오를 추출하여 MP3로 다운로드 (차단 우회 옵션 포함)"""
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
+        'quiet': True,
+        'noplaylist': True,
+        # 유튜브 서버 차단 방지용 에뮬레이션 헤더
+        'socket_timeout': 30,
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}}
+    }
+    
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(youtube_url, download=True)
+            filename = ydl.prepare_filename(info_dict)
+            base, _ = os.path.splitext(filename)
+            mp3_path = base + ".mp3"
+            song_title = info_dict.get('title', 'youtube_song')
+            # 파일명에 쓸 수 없는 특수문자 제거
+            song_title = "".join(c for c in song_title if c.isalnum() or c in (' ', '-', '_', '[', ']')).strip()
+        return mp3_path, song_title
+    except Exception as e:
+        raise RuntimeError(f"유튜브 다운로드 실패 (링크를 확인하거나 잠시 후 다시 시도하세요): {e}")
 
 def separate_audio(file_path, filename):
-    # 메모리 절약을 위해 스레드 수 제한 및 CPU 모드 명시
     env = os.environ.copy()
     env["OMP_NUM_THREADS"] = "2"
     
@@ -287,31 +316,57 @@ else:
             st.rerun()
 
         st.title("➕ 새 음원 작업 추가")
-        uploaded_file = st.file_uploader("음악 파일 업로드 (MP3, WAV 권장: 3~4분 내외)", type=["mp3", "wav"])
+        
+        # 파일 업로드 vs 유튜브 링크 입력 탭 분리
+        source_tab1, source_tab2 = st.tabs(["🔗 유튜브 링크 입력", "📁 파일 직접 업로드"])
+        
+        with source_tab1:
+            yt_url = st.text_input("유튜브 영상 링크 입력 (예: https://youtu.be/...)")
+            if st.button("🚀 유튜브 음원 다운로드 및 분리 시작", type="primary", use_container_width=True):
+                if yt_url:
+                    with st.spinner("유튜브 음원 추출 및 AI 세션 분리 중... (수 분 소요됩니다)"):
+                        try:
+                            file_path, song_title = download_youtube_audio(yt_url, UPLOAD_DIR)
+                            separated_dir = separate_audio(file_path, song_title + ".mp3")
+                            project_id = save_project(user_info['id'], song_title, separated_dir)
+                            
+                            st.success("세션 분리 완료!")
+                            st.session_state['current_project'] = {
+                                "id": project_id,
+                                "song_title": song_title,
+                                "separated_dir": separated_dir
+                            }
+                            st.session_state['view'] = 'project_detail'
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"오류 발생: {e}")
+                else:
+                    st.warning("유튜브 링크를 입력해주세요.")
 
-        if uploaded_file is not None:
-            file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
+        with source_tab2:
+            uploaded_file = st.file_uploader("음악 파일 업로드 (MP3, WAV)", type=["mp3", "wav"])
+            if uploaded_file is not None:
+                file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
+                with open(file_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
 
-            if st.button("🚀 음원 세션 분리 및 저장 시작", type="primary", use_container_width=True):
-                with st.spinner("AI 모델이 악기별 세션을 분리 중입니다. (무료 서버 특성상 3~7분 정도 소요될 수 있습니다)"):
-                    try:
-                        separated_dir = separate_audio(file_path, uploaded_file.name)
-                        song_title = os.path.splitext(uploaded_file.name)[0]
-                        
-                        project_id = save_project(user_info['id'], song_title, separated_dir)
-                        
-                        st.success("세션 분리 및 저장이 완료되었습니다!")
-                        st.session_state['current_project'] = {
-                            "id": project_id,
-                            "song_title": song_title,
-                            "separated_dir": separated_dir
-                        }
-                        st.session_state['view'] = 'project_detail'
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"오류 발생 (파일 용량이 너무 크거나 서버 메모리가 부족하여 중단되었습니다): {e}")
+                if st.button("🚀 파일 세션 분리 및 저장 시작", type="primary", use_container_width=True):
+                    with st.spinner("AI 모델이 세션을 분리하는 중입니다..."):
+                        try:
+                            separated_dir = separate_audio(file_path, uploaded_file.name)
+                            song_title = os.path.splitext(uploaded_file.name)[0]
+                            project_id = save_project(user_info['id'], song_title, separated_dir)
+                            
+                            st.success("세션 분리 완료!")
+                            st.session_state['current_project'] = {
+                                "id": project_id,
+                                "song_title": song_title,
+                                "separated_dir": separated_dir
+                            }
+                            st.session_state['view'] = 'project_detail'
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"오류 발생: {e}")
 
     elif st.session_state['view'] == 'project_detail':
         if st.button("⬅️ 목록으로 돌아가기"):
