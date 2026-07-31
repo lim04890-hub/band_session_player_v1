@@ -1039,17 +1039,31 @@ else:
             st.subheader("세션 균형 무작위 팀 배치")
             num_teams_rand = st.number_input("생성할 팀 수", min_value=1, max_value=10, value=2, key="rand_team_count")
             
-            if st.button("🎲 랜덤 팀 자동 배분 실행", type="primary"):
+            if st.button("🎲 세션 균형 자동 배분 실행", type="primary"):
                 import random
-                shuffled_members = list(all_active_list)
-                random.shuffle(shuffled_members)
                 
+                # 세션별로 부원 분류
+                session_dict = {}
+                for m in all_active_list:
+                    s = m['session']
+                    if s not in session_dict:
+                        session_dict[s] = []
+                    session_dict[s].append(m)
+                
+                # 각 세션 내에서 무작위 셔플
+                for s in session_dict:
+                    random.shuffle(session_dict[s])
+                
+                # 팀 초기화
                 teams_result = {f"팀 {i+1}": [] for i in range(num_teams_rand)}
-                for idx, m in enumerate(shuffled_members):
-                    t_key = f"팀 {(idx % num_teams_rand) + 1}"
-                    teams_result[t_key].append(m)
                 
-                st.success("랜덤 팀 편성이 완료되었습니다!")
+                # 세션별로 각 팀에 골고루 분배
+                for s, members in session_dict.items():
+                    for idx, m in enumerate(members):
+                        t_key = f"팀 {(idx % num_teams_rand) + 1}"
+                        teams_result[t_key].append(m)
+                
+                st.success("세션이 균형 있게 배분된 팀 편성이 완료되었습니다!")
                 for t_name, members in teams_result.items():
                     st.markdown(f"### 🎸 {t_name}")
                     for m in members:
