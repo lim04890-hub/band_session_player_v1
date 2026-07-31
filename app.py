@@ -331,7 +331,7 @@ else:
         source_tab1, source_tab2 = st.tabs(["🔗 유튜브 링크 입력", "📁 파일 직접 업로드"])
         
         with source_tab1:
-            yt_url = st.text_input("유튜브 영상 링크 입력 (예: https://youtu.be/...)")
+            yt_url = st.text_input("유튜브 영상 링크 입력 (예: https://youtu.be/OQWHFmPDVRg?si=aTAsKyJb4x4FBzGv)")
             if st.button("🚀 유튜브 음원 다운로드 및 분리 시작", type="primary", use_container_width=True):
                 if yt_url:
                     with st.spinner("유튜브 음원 추출 및 AI 세션 분리 중... (수 분 소요됩니다)"):
