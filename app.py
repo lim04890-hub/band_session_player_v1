@@ -641,13 +641,31 @@ def stop_ensemble_db(ensemble_id):
     conn.close()
     return 0, 0
 
-def get_active_ensemble():
+def get_active_ensembles():
+    """현재 활성화된(is_active == 1) 모든 합주 목록을 반환합니다."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ensembles WHERE is_active = 1 LIMIT 1")
-    ens = cursor.fetchone()
+    cursor.execute("SELECT * FROM ensembles WHERE is_active = 1")
+    rows = cursor.fetchall()
     conn.close()
-    return dict(ens) if ens else None
+    
+    active_list = []
+    for row in rows:
+        # row 객체 유형에 구애받지 않고 안전하게 컬럼 값을 가져오도록 처리
+        try:
+            start_time = row['start_time'] if 'start_time' in row.keys() else 0
+        except (TypeError, AttributeError, IndexError):
+            start_time = 0
+
+        active_list.append({
+            'id': row['id'] if 'id' in row.keys() else row[0],
+            'name': row['name'] if 'name' in row.keys() else row[1],
+            'team_name': row['team_name'] if 'team_name' in row.keys() else row[2],
+            'member_ids': row['member_ids'] if 'member_ids' in row.keys() else row[3],
+            'is_active': row['is_active'] if 'is_active' in row.keys() else row[4],
+            'start_time': start_time
+        })
+    return active_list
 
 init_db()
 
