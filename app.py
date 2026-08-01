@@ -1278,7 +1278,7 @@ else:
                             if i > 0 and c_items[i - 1]['id'] not in my_items:
                                 can_buy = False
 
-                            req_stat = 0
+                            req_ensemble_stat = 0
                             if item['cost'] == 5000 or 7000: req_ensemble_stat = 1
                             elif item['cost'] == 10000 or 15000: req_ensemble_stat = 3
                             elif item['cost'] == 20000 or 30000 : req_ensemble_stat = 5
@@ -1319,7 +1319,7 @@ else:
                         if i > 0 and target_gear_list[i - 1]['id'] not in my_items:
                             can_buy = False
 
-                        req_stat = 0
+                        req_ensemble_stat = 0
                         if item['cost'] == 5000 or 7000: req_ensemble_stat = 1
                         elif item['cost'] == 10000 or 15000: req_ensemble_stat = 3
                         elif item['cost'] == 20000 or 30000 : req_ensemble_stat = 5
