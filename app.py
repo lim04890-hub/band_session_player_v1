@@ -619,7 +619,6 @@ def start_ensemble_db(ensemble_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     now_ts = time.time()
-    # 이전에 있던 강제 비활성화 쿼리를 삭제하여 여러 합주가 동시에 진행되도록 수정됨.
     cursor.execute("UPDATE ensembles SET is_active = 1, start_time = ? WHERE id = ?", (now_ts, ensemble_id))
     conn.commit()
     conn.close()
