@@ -100,10 +100,8 @@ INITIAL_MEMBERS = [
     ("허승범", "전기전자공학부", "23", "보컬", 1)
 ]
 
-# 고유 학과 목록 추출
 DEPARTMENT_LIST = sorted(list(set([item[1] for item in INITIAL_MEMBERS])))
 
-# 공통 장착 아이템 카테고리별 정의 (생략 없이 이전 코드와 동일)
 COMMON_SHOP_ITEMS = {
     "모자": [
         {"id": "hat_1", "name": "🧢 기본 스냅백", "cost": 1000, "desc": "챙을 완전히 편 스냅백"},
@@ -195,7 +193,6 @@ def init_db():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Members Table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS members (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -213,7 +210,6 @@ def init_db():
             )
         ''')
         
-        # Update Columns
         cursor.execute("PRAGMA table_info(members)")
         columns = [col[1] for col in cursor.fetchall()]
         if 'credits' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN credits INTEGER DEFAULT 0")
@@ -223,7 +219,6 @@ def init_db():
         if 'bio' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN bio TEXT DEFAULT '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!'")
         if 'ensemble_stats' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN ensemble_stats INTEGER DEFAULT 0")
 
-        # Saved Teams DB
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS saved_teams (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -242,7 +237,6 @@ def init_db():
             )
         ''')
 
-        # Projects, Performances, Ensembles
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -262,7 +256,6 @@ def init_db():
             )
         ''')
 
-        # Performance <-> Saved Teams 매핑 테이블
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS performance_teams_map (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -285,7 +278,6 @@ def init_db():
             )
         ''')
         
-        # 멤버 초기 데이터 삽입
         cursor.execute("SELECT COUNT(*) FROM members")
         if cursor.fetchone()[0] == 0:
             for item in INITIAL_MEMBERS:
@@ -411,12 +403,9 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
             return False, f"이전 단계 아이템인 [{category_items[target_idx - 1]['name']}]을(를) 먼저 구매해야 합니다!"
 
     req_ensemble_stat = 0
-    if cost == 3000:
-        req_ensemble_stat = 1
-    elif cost == 5000:
-        req_ensemble_stat = 3
-    elif cost >= 10000:
-        req_ensemble_stat = 5
+    if cost == 3000: req_ensemble_stat = 1
+    elif cost == 5000: req_ensemble_stat = 3
+    elif cost >= 10000: req_ensemble_stat = 5
 
     if current_credits < cost and current_ensemble_stats < req_ensemble_stat:
         conn.close()
@@ -488,7 +477,7 @@ def save_custom_team(team_name, member_ids):
         conn.commit()
         return True, "팀이 성공적으로 저장되었습니다."
     except sqlite3.IntegrityError:
-        return False, "이미 존재하는 팀 이름입니다."
+        return False, f"이미 존재하는 팀 이름입니다: {team_name}"
     except Exception as e:
         return False, f"오류 발생: {e}"
     finally:
@@ -502,7 +491,6 @@ def get_all_saved_teams():
     
     result = []
     for t in teams:
-        # 멤버 조회 및 세션 정렬 반환
         cursor.execute('''
             SELECT m.id, m.name, m.department, m.session 
             FROM saved_team_members stm
@@ -511,7 +499,6 @@ def get_all_saved_teams():
         ''', (t['id'],))
         members = cursor.fetchall()
         
-        # 파이썬 레벨에서 정렬 (보컬 -> 기타 -> 베이스 -> 드럼 -> 키보드)
         session_order = {"보컬": 1, "기타": 2, "베이스": 3, "드럼": 4, "키보드": 5}
         sorted_members = sorted([dict(m) for m in members], key=lambda x: (session_order.get(x['session'], 6), x['name']))
         
@@ -638,7 +625,7 @@ def stop_ensemble_db(ensemble_id):
     if ens and ens['is_active'] == 1:
         start_t = ens['start_time']
         elapsed_sec = time.time() - start_t
-        stats_earned = int(elapsed_sec // 1800) # 30분당 1 능력치
+        stats_earned = int(elapsed_sec // 1800)
         
         member_ids = [int(x.strip()) for x in ens['member_ids'].split(",") if x.strip()]
         
@@ -664,7 +651,6 @@ def get_active_ensemble():
 
 init_db()
 
-# --- Audio Logic (생략 없이 유지) ---
 def separate_audio(file_path, filename):
     env = os.environ.copy()
     env["OMP_NUM_THREADS"] = "2"
@@ -739,7 +725,6 @@ def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
     except Exception as e:
         st.error(f"오디오 믹싱 처리 중 오류 발생: {e}")
         return None
-
 
 # --- 세션 및 상태 관리 ---
 if 'member' not in st.session_state or st.session_state['member'] is None:
@@ -828,7 +813,6 @@ else:
     for items in COMMON_SHOP_ITEMS.values(): all_possible_shop_items.extend(items)
     for s_items in SESSION_GEAR_ITEMS.values(): all_possible_shop_items.extend(s_items)
 
-    # 내 작업실, 연습실 상점, 합주, 부원목록 탭은 내용 동일 유지하되 구조 간결화 처리
     if selected_main_tab == "🎵 내 작업실":
         if st.session_state['view'] == 'dashboard':
             st.title("📂 내 연습 작업물 목록")
@@ -891,9 +875,77 @@ else:
                     with open(mix_path, "rb") as f: st.download_button("다운로드", f, file_name="mix.wav")
 
     elif selected_main_tab == "🎮 연습실 & 상점":
-        st.title("🎮 HERTZ 아케이드 연습실")
-        # 기존 연습실 & 상점 로직 생략 (기능 동일 유지)
-        st.info("이전 코드와 동일한 연습실 모듈 적용 완료")
+        st.title("🎮 HERTZ 아케이드 연습실 & 상점")
+        arcade_tab1, arcade_tab2 = st.tabs(["⏱️ 개인 연습실 (크레딧 파밍)", "🛒 장비 상점 & 스킨"])
+        
+        with arcade_tab1:
+            st.markdown("### ⏱️ 개인 연습실")
+            st.write("연습실 타이머를 켜고 악기를 연습하세요! 흐른 시간에 비례해 **크레딧(C)**과 **합주 능력치(⚡)**가 적립됩니다.")
+            st.info("💡 1분당 30 C 적립 | ⚡ 합주 능력치는 30분마다 1개씩 획득 가능합니다.")
+            
+            user_practice_mins = member.get('practice_minutes', 0)
+            user_title = get_title_by_practice_time(user_practice_mins)
+            st.markdown(f"**현재 내 누적 연습 시간:** {user_practice_mins}분 | **칭호:** {user_title}")
+            
+            if not st.session_state['is_practicing']:
+                if st.button("🔴 연습 시작하기", type="primary", use_container_width=True):
+                    st.session_state['is_practicing'] = True
+                    st.session_state['practice_start_time'] = time.time()
+                    st.rerun()
+            else:
+                elapsed_sec = time.time() - st.session_state['practice_start_time']
+                st.warning(f"🔴 연습 진행 중... (경과 시간: {int(elapsed_sec // 60)}분 {int(elapsed_sec % 60)}초)")
+                if st.button("⏹️ 연습 종료 및 정산하기", type="primary", use_container_width=True):
+                    elapsed_minutes = int(elapsed_sec // 60)
+                    if elapsed_minutes >= 1:
+                        earned = elapsed_minutes * 30
+                        add_practice_time_and_credits(member['id'], elapsed_minutes, earned)
+                        st.success(f"연습 종료! {elapsed_minutes}분 동안 연습하여 크레딧 +{earned} C가 적립되었습니다.")
+                    else:
+                        st.info("1분 미만은 정산되지 않습니다.")
+                    st.session_state['is_practicing'] = False
+                    st.session_state['practice_start_time'] = None
+                    st.rerun()
+
+        with arcade_tab2:
+            st.markdown("### 🛒 HERTZ 장비 상점")
+            shop_tab_choice = st.radio("상점 카테고리", ["공통 장비 (모자/옷/신발/장신구/MD)", f"내 세션 장비 ({member['session']})"], horizontal=True)
+            
+            user_inventory = [i.strip() for i in (member.get('inventory', "") or "").split(",") if i.strip()]
+            
+            if "공통 장비" in shop_tab_choice:
+                sub_cats = ["모자", "옷", "신발", "장신구", "MD"]
+                selected_sub_cat = st.selectbox("분류 선택", sub_cats)
+                items_to_show = COMMON_SHOP_ITEMS[selected_sub_cat]
+            else:
+                items_to_show = SESSION_GEAR_ITEMS.get(member['session'], [])
+                st.caption(f"현재 등록된 세션({member['session']}) 전용 장비 목록입니다.")
+
+            for item in items_to_show:
+                is_owned = item['id'] in user_inventory
+                col_item1, col_item2, col_item3 = st.columns([3, 2, 1])
+                with col_item1:
+                    status_str = "✅ [보유 중]" if is_owned else f"💰 {item['cost']} C"
+                    st.markdown(f"**{item['name']}** ({status_str})\n> {item['desc']}")
+                with col_item2:
+                    req_stat = 0
+                    if item['cost'] == 3000: req_stat = 1
+                    elif item['cost'] == 5000: req_stat = 3
+                    elif item['cost'] >= 10000: req_stat = 5
+                    if req_stat > 0:
+                        st.caption(f"필요 합주 능력치: ⚡ {req_stat}개")
+                with col_item3:
+                    if not is_owned:
+                        if st.button("구매", key=f"buy_{item['id']}", use_container_width=True):
+                            success, msg = purchase_item_db(member['id'], items_to_show, item['id'], item['cost'])
+                            if success:
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                    else:
+                        st.button("장착중", key=f"owned_{item['id']}", disabled=True, use_container_width=True)
+                st.markdown("---")
 
     elif selected_main_tab == "🎷 합주":
         st.title("🎷 HERTZ 팀 합주실")
@@ -909,7 +961,6 @@ else:
         st.markdown("---")
         st.subheader("➕ 새 합주 개설하기")
 
-        # 저장된 전체 팀을 가져와서 연동
         saved_teams = get_all_saved_teams()
         
         if not saved_teams:
@@ -946,9 +997,36 @@ else:
                         st.rerun()
 
     elif selected_main_tab == "👥 부원 목록":
-        st.title("👥 부원 목록")
-        # 기존 부원 목록 출력 (생략 처리)
-        st.info("이전 코드와 동일한 부원 조회 모듈 적용 완료")
+        st.title("👥 HERTZ 전체 부원 명단")
+        all_members = get_all_members_including_inactive()
+        
+        col_f1, col_f2 = st.columns(2)
+        filter_session = col_f1.selectbox("세션별 필터", ["전체"] + ["보컬", "기타", "베이스", "드럼", "키보드"])
+        filter_dept = col_f2.selectbox("학과별 필터", ["전체"] + DEPARTMENT_LIST)
+        
+        filtered_members = all_members
+        if filter_session != "전체":
+            filtered_members = [m for m in filtered_members if m['session'] == filter_session]
+        if filter_dept != "전체":
+            filtered_members = [m for m in filtered_members if m['department'] == filter_dept]
+            
+        st.markdown(f"**총 부원 수:** {len(filtered_members)}명")
+        st.markdown("---")
+        
+        for m in filtered_members:
+            status_badge = "🟢 [활동 중]" if m['is_active'] == 1 else "🔴 [활동 휴식/중단]"
+            admin_badge = "👑 임원" if m['is_admin'] == 1 else "🎵 부원"
+            
+            with st.expander(f"{m['name']} ({m['session']} / {m['department']}) - {admin_badge} {status_badge}"):
+                st.write(f"- **학번:** {m['student_id']}학번")
+                st.write(f"- **크레딧:** {m['credits']} C")
+                st.write(f"- **합주 능력치:** ⚡ {m.get('ensemble_stats', 0)}개")
+                st.write(f"- **누적 연습 시간:** {m.get('practice_minutes', 0)}분 ({get_title_by_practice_time(m.get('practice_minutes', 0))})")
+                st.write(f"- **한줄 소개:** {m.get('bio', '')}")
+                
+                inv = m.get('inventory', "")
+                if inv:
+                    st.write(f"- **보유 장비/아이템:** {inv}")
 
     elif selected_main_tab == "🤝 팀 조합":
         st.title("🤝 밴드 팀 조합 관리")
@@ -988,37 +1066,57 @@ else:
                             if input_name.strip():
                                 m_ids = [m['id'] for m in members_list]
                                 success, msg = save_custom_team(input_name, m_ids)
-                                if success: st.success(msg)
-                                else: st.error(msg)
+                                if success: 
+                                    st.success(msg)
+                                    st.rerun()
+                                else: 
+                                    st.error(msg)
                             else:
                                 st.warning("저장할 팀 이름을 입력하세요.")
                         st.markdown("---")
 
             with team_sub2:
-                st.subheader("임원진 수동 팀 편성 (세션순 정렬)")
+                st.subheader("임원진 수동 팀 편성 (최대 5팀 동시 등록)")
                 if member['is_admin'] == 0:
                     st.warning("⚠️ 임원진 권한이 없어 팀을 저장할 수 없습니다.")
                 
-                manual_team_name = st.text_input("새 팀 이름", key="manual_team_name")
+                num_manual_teams = st.number_input("동시에 생성할 팀 수", min_value=1, max_value=5, value=1, key="num_manual_teams_input")
                 
-                # 세션 우선순위에 따른 정렬
                 session_order = {"보컬": 1, "기타": 2, "베이스": 3, "드럼": 4, "키보드": 5}
                 sorted_active_list = sorted(all_active_list, key=lambda x: (session_order.get(x['session'], 6), x['name']))
-                
                 member_options = {f"{m['name']} ({m['session']} / {m['department']})": m['id'] for m in sorted_active_list}
                 
-                selected_member_labels = st.multiselect("조합할 팀원 다중 선택", list(member_options.keys()), key="manual_team_members")
+                manual_team_configs = []
+                for i in range(int(num_manual_teams)):
+                    st.markdown(f"#### 팀 {i+1} 설정")
+                    t_name = st.text_input(f"팀 이름 #{i+1}", key=f"manual_tname_{i}")
+                    t_members = st.multiselect(f"팀원 선택 #{i+1}", list(member_options.keys()), key=f"manual_tmembers_{i}")
+                    manual_team_configs.append({"name": t_name, "members": t_members})
+                    st.markdown("---")
                 
-                if st.button("💾 수동 팀 편성 저장", type="primary", disabled=(member['is_admin'] == 0)):
-                    if manual_team_name.strip() and selected_member_labels:
-                        m_ids = [member_options[label] for label in selected_member_labels]
-                        success, msg = save_custom_team(manual_team_name, m_ids)
-                        if success:
-                            st.success(msg)
-                        else:
-                            st.error(msg)
-                    else:
-                        st.warning("팀 이름과 팀원을 모두 입력 및 선택해주세요.")
+                if st.button("💾 모든 팀 일괄 저장", type="primary", disabled=(member['is_admin'] == 0)):
+                    success_count = 0
+                    error_msgs = []
+                    
+                    for cfg in manual_team_configs:
+                        t_name = cfg["name"].strip()
+                        labels = cfg["members"]
+                        if t_name and labels:
+                            m_ids = [member_options[lbl] for lbl in labels]
+                            success, msg = save_custom_team(t_name, m_ids)
+                            if success:
+                                success_count += 1
+                            else:
+                                error_msgs.append(f"[{t_name}]: {msg}")
+                        elif t_name or labels:
+                            error_msgs.append(f"[{t_name or '이름 없음'}]: 팀 이름과 팀원을 모두 지정해주세요.")
+                            
+                    if success_count > 0:
+                        st.success(f"총 {success_count}개의 팀이 성공적으로 저장되었습니다!")
+                    for em in error_msgs:
+                        st.error(em)
+                    if success_count > 0:
+                        st.rerun()
 
         with main_team_tabs[1]:
             st.subheader("📋 저장된 팀 목록")
@@ -1062,9 +1160,9 @@ else:
 
                     if perf_teams:
                         for pt in perf_teams:
-                            st.markdown(f"**🔹 {pt['team_name']}**")
-                            for m in pt['members']:
-                                st.write(f"&nbsp;&nbsp;&nbsp;&nbsp;- {m['name']} (`{m['session']}` / {m['department']})")
+                            with st.expander(f"🎸 팀: {pt['team_name']} (참가 인원 {len(pt['members'])}명)"):
+                                for m in pt['members']:
+                                    st.write(f"- {m['name']} (`{m['session']}` / {m['department']})")
                     else:
                         st.caption("현재 배정된 팀이 없습니다.")
 
@@ -1091,5 +1189,54 @@ else:
                 st.markdown("---")
 
     elif selected_main_tab == "⚙️ 임원 관리" and member['is_admin'] == 1:
-        st.title("⚙️ 임원 관리")
-        st.info("이전 코드와 동일한 멤버 관리 기능 적용 완료")
+        st.title("⚙️ HERTZ 임원진 전용 관리")
+        admin_sub_tab1, admin_sub_tab2 = st.tabs(["👤 부원 추가 및 권한 관리", "🔄 부원 활동 상태 관리"])
+        
+        all_members_list = get_all_members_including_inactive()
+        
+        with admin_sub_tab1:
+            st.subheader("➕ 새 부원 직접 등록")
+            with st.form("add_member_form"):
+                new_name = st.text_input("이름")
+                new_dept = st.selectbox("학과", DEPARTMENT_LIST + ["기타"], key="add_dept")
+                new_sid = st.text_input("학번 두 자리 (예: 24)")
+                new_sess = st.selectbox("세션", ["보컬", "기타", "베이스", "드럼", "키보드"], key="add_sess")
+                new_is_admin = st.checkbox("임원진 권한 부여")
+                
+                submitted_new = st.form_submit_button("부원 등록하기", use_container_width=True)
+                if submitted_new:
+                    if new_name.strip() and new_sid.strip():
+                        success, msg = add_member(new_name, new_dept, new_sid, new_sess, new_is_admin)
+                        if success:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+                    else:
+                        st.warning("이름과 학번을 올바르게 입력해주세요.")
+
+            st.markdown("---")
+            st.subheader("👑 임원 권한 부여 및 회수")
+            for m in all_members_list:
+                col_m1, col_m2, col_m3 = st.columns([3, 2, 1])
+                col_m1.markdown(f"**{m['name']}** (`{m['session']}` / {m['department']})")
+                is_currently_admin = (m['is_admin'] == 1)
+                new_admin_state = col_m2.checkbox("임원진", value=is_currently_admin, key=f"admin_chk_{m['id']}")
+                
+                if new_admin_state != is_currently_admin:
+                    update_member_admin(m['id'], new_admin_state)
+                    st.success(f"{m['name']} 님의 임원 권한이 변경되었습니다.")
+                    st.rerun()
+
+        with admin_sub_tab2:
+            st.subheader("🔄 부원 활동 상태 관리 (휴학/탈퇴 등)")
+            for m in all_members_list:
+                col_a1, col_a2 = st.columns([3, 1])
+                is_active_state = (m['is_active'] == 1)
+                status_text = "🟢 활동 중" if is_active_state else "🔴 활동 중단/휴식"
+                col_a1.markdown(f"**{m['name']}** ({m['session']} / {m['department']}) - {status_text}")
+                
+                new_active_state = col_a2.toggle("활동 여부", value=is_active_state, key=f"active_tog_{m['id']}")
+                if new_active_state != is_active_state:
+                    set_member_active_status(m['id'], new_active_state)
+                    st.rerun()
