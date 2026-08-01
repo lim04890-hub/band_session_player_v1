@@ -1017,8 +1017,7 @@ else:
 
             equipped_display = []
             total_credits = 0
-            # --- 추가 관중 수 ---
-            add_aud = total_credits / 1000
+
             for mi in my_items:
                 match_obj = next((item for item in all_possible_shop_items if item['id'] == mi), None)
                 if match_obj:
@@ -1251,7 +1250,7 @@ else:
                             st.session_state['practice_start_time'] = None
                             st.rerun()
                         else:
-                            bonus_credits = add_aud * 0.1
+                            bonus_credits = audience_count * 0.1
                             earned = int(round((elapsed_minutes * 30) + bonus_credits))
 
                             add_practice_time_and_credits(member['id'], elapsed_minutes, earned)
