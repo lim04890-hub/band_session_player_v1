@@ -850,8 +850,7 @@ def ensemble_result_dialog(ens_name, m_count, earned):
     if st.button("확인"):
         st.rerun()
 
-# --- 추가 관중 수 ---
-add_aud = total_credits / 1000
+
 # --- UI 레이아웃 ---
 st.markdown("""
     <div class="hertz-header">
@@ -1018,7 +1017,8 @@ else:
 
             equipped_display = []
             total_credits = 0
-
+            # --- 추가 관중 수 ---
+            add_aud = total_credits / 1000
             for mi in my_items:
                 match_obj = next((item for item in all_possible_shop_items if item['id'] == mi), None)
                 if match_obj:
