@@ -1698,12 +1698,23 @@ else:
                         else:
                             final_dept = new_dept
                       
-                        # DB 저장 로직 (실제 사용하시는 cursor 코드에 맞게 변수명 확인)
-                        # cursor.execute("INSERT INTO members (name, student_id, department, session, is_exec) VALUES (?, ?, ?, ?, ?)", 
-                        #                (new_name, new_sid, final_dept, new_sess, 1 if new_is_admin else 0))
-                        # conn.commit()
-                      
-                        st.success(f"등록 완료! (이름: {new_name}, 학과: {final_dept})")
+                        try:
+                            conn = sqlite3.connect("hertz_app_data.db")  # 사용 중인 DB 파일명에 맞게 수정
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                """
+                                INSERT INTO members (name, student_id, department, session, is_exec) 
+                                VALUES (?, ?, ?, ?, ?)
+                                """,
+                                (new_name, new_sid, final_dept, new_sess, 1 if new_is_admin else 0)
+                            )
+                            conn.commit()
+                            conn.close()
+                
+                            st.success(f"등록 완료! (이름: {new_name}, 학과: {final_dept})")
+                            st.rerun()  # 화면을 새로고침하여 목록에 즉시 반영되도록 함
+                        except Exception as e:
+                            st.error(f"데이터베이스 저장 중 오류가 발생했습니다: {e}")
 
             st.markdown("---")
             st.subheader("👑 임원 권한 부여 및 회수")
