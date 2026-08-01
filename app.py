@@ -99,6 +99,9 @@ INITIAL_MEMBERS = [
     ("허승범", "전기전자공학부", "23", "보컬", 1)
 ]
 
+# 고유 학과 목록 추출
+DEPARTMENT_LIST = sorted(list(set([item[1] for item in INITIAL_MEMBERS])))
+
 # 공통 장착 아이템 카테고리별 정의
 COMMON_SHOP_ITEMS = {
     "모자": [
@@ -670,9 +673,17 @@ def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
         return None
 
 
-# --- 세션 상태 관리 ---
-if 'member' not in st.session_state:
-    st.session_state['member'] = None
+# --- 세션 및 자동 로그인 상태 관리 ---
+if 'member' not in st.session_state or st.session_state['member'] is None:
+    if "auto_login_id" in st.query_params:
+        auto_uid = int(st.query_params["auto_login_id"])
+        member_data = get_member_fresh(auto_uid)
+        if member_data and member_data['is_active'] == 1:
+            st.session_state['member'] = member_data
+            st.session_state['view'] = 'dashboard'
+    else:
+        st.session_state['member'] = None
+
 if 'view' not in st.session_state:
     st.session_state['view'] = 'dashboard'
 if 'current_project' not in st.session_state:
@@ -712,7 +723,7 @@ if st.session_state['member'] is None:
     
     with st.form("login_form"):
         input_name = st.text_input("이름")
-        input_dept = st.text_input("학과 (예: 전기전자공학부, 컴퓨터공학부 등)")
+        input_dept = st.selectbox("학과", DEPARTMENT_LIST + ["기타"])
         input_id = st.text_input("학번 두 자리 (예: 21, 23, 25 등)")
         input_session = st.selectbox("세션", ["보컬", "기타", "베이스", "드럼", "키보드"])
         
@@ -723,6 +734,7 @@ if st.session_state['member'] is None:
             if member_data:
                 st.session_state['member'] = member_data
                 st.session_state['view'] = 'dashboard'
+                st.query_params["auto_login_id"] = str(member_data['id'])
                 st.success("인증 성공!")
                 st.rerun()
             else:
@@ -746,9 +758,11 @@ else:
             st.session_state['member'] = None
             st.session_state['view'] = 'dashboard'
             st.session_state['current_project'] = None
+            if "auto_login_id" in st.query_params:
+                del st.query_params["auto_login_id"]
             st.rerun()
 
-    base_tabs = ["🎵 내 작업실", "🎮 연습실 & 상점", "🎷 합주", "👥 [👑]부원", "🤝 [👑]팀", "🎪 [👑]공연 관리"]
+    base_tabs = ["🎵 내 작업실", "🎮 연습실 & 상점", "🎷 합주", "👥 부원 목록", "🤝 팀 조합", "🎪 공연 관리"]
     if member['is_admin'] == 1:
         base_tabs.append("⚙️ 임원 관리")
 
@@ -1149,7 +1163,7 @@ else:
             for idx, cat_name in enumerate(categories):
                 with shop_tabs[idx]:
                     st.markdown(f"### 🛒 {cat_name} 컬렉션")
-                    c_items = COMMON_SHOP_ITEMS[cat_name]
+                    c_items = sorted(COMMON_SHOP_ITEMS[cat_name], key=lambda x: x['cost'])
                     scols = st.columns(2)
                     for i, item in enumerate(c_items):
                         with scols[i % 2]:
@@ -1189,7 +1203,7 @@ else:
             with shop_tabs[5]:
                 st.markdown("### 🎸 세션별 악기 및 장비 상점")
                 selected_gear_session = st.selectbox("조회할 악기 세션 선택", ["기타", "베이스", "보컬", "드럼", "키보드"])
-                target_gear_list = SESSION_GEAR_ITEMS[selected_gear_session]
+                target_gear_list = sorted(SESSION_GEAR_ITEMS[selected_gear_session], key=lambda x: x['cost'])
                 
                 g_cols = st.columns(2)
                 for i, item in enumerate(target_gear_list):
@@ -1321,7 +1335,7 @@ else:
                             st.button("🔴 진행 중", key=f"active_ens_btn_{e['id']}", disabled=True, use_container_width=True)
                     st.markdown("---")
 
-    elif selected_main_tab == "👥 부원 목록 및 아바타":
+    elif selected_main_tab == "👥 부원 목록":
         st.title("👥 HERTZ 전체 부원 및 아바타 갤러리")
         filter_opt = st.radio("조회 범위 선택", ["활동 중인 부원만", "전체 명단"], horizontal=True)
         
@@ -1390,30 +1404,34 @@ else:
         with team_sub2:
             st.subheader("임원진 직접 팀 지정 편성")
             if member['is_admin'] == 0:
-                st.warning("⚠️ 직접 팀 편성은 임원진 권한 부원만 저장할 수 있습니다.")
+                st.warning("⚠️ 직접 팀 편성은 임원진 권한 부원만 저장할 수 있습니다. (열람 가능)")
 
             manual_num_teams = st.number_input("편성할 팀 수 설정", min_value=1, max_value=10, value=2, key="manual_team_count")
             for t_idx in range(manual_num_teams):
                 t_name = f"팀 {t_idx + 1}"
                 with st.expander(f"📌 {t_name} 멤버 구성"):
                     for m in all_active_list:
-                        st.checkbox(f"{m['name']} ({m['session']} / {m['department']})", key=f"t_{t_idx}_m_{m['id']}")
+                        # 관리자가 아니면 disabled 처리
+                        st.checkbox(f"{m['name']} ({m['session']} / {m['department']})", key=f"t_{t_idx}_m_{m['id']}", disabled=(member['is_admin'] == 0))
+            if member['is_admin'] == 1:
+                st.button("💾 임원진 수동 팀 편성 저장 (기능 구현 예정)")
 
     elif selected_main_tab == "🎪 공연 관리":
         st.title("🎪 공연별 팀 세팅 관리")
         performances = get_all_performances()
 
-        with st.expander("➕ 새 공연 생성하기 (임원진 전용)"):
-            with st.form("new_perf_form"):
-                perf_title_input = st.text_input("공연 이름")
-                perf_submit = st.form_submit_button("공연 추가")
-                if perf_submit:
-                    if perf_title_input.strip() and member['is_admin'] == 1:
-                        create_performance(perf_title_input.strip())
-                        st.success(f"'{perf_title_input.strip()}' 공연이 생성되었습니다!")
-                        st.rerun()
-
-        st.markdown("---")
+        if member['is_admin'] == 1:
+            with st.expander("➕ 새 공연 생성하기 (임원진 전용)"):
+                with st.form("new_perf_form"):
+                    perf_title_input = st.text_input("공연 이름")
+                    perf_submit = st.form_submit_button("공연 추가")
+                    if perf_submit:
+                        if perf_title_input.strip() and member['is_admin'] == 1:
+                            create_performance(perf_title_input.strip())
+                            st.success(f"'{perf_title_input.strip()}' 공연이 생성되었습니다!")
+                            st.rerun()
+            st.markdown("---")
+            
         if not performances:
             st.info("등록된 공연이 없습니다.")
         else:
