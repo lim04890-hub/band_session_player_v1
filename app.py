@@ -1250,7 +1250,7 @@ else:
                             st.session_state['practice_start_time'] = None
                             st.rerun()
                         else:
-                            bonus_credits = crowd * 0.1
+                            bonus_credits = audienceCount * 0.1
                             earned = int(round((elapsed_minutes * 30) + bonus_credits))
 
                             add_practice_time_and_credits(member['id'], elapsed_minutes, earned)
