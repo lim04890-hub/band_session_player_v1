@@ -874,7 +874,7 @@ else:
                     st.audio(mix_path)
                     with open(mix_path, "rb") as f: st.download_button("다운로드", f, file_name="mix.wav")
 
-elif selected_main_tab == "🎮 연습실 & 상점":
+    elif selected_main_tab == "🎮 연습실 & 상점":
         st.title("🎮 HERTZ 아케이드 연습실 & 상점")
         st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 캐릭터에 장비와 아이템을 순서대로 장착해보세요!")
 
