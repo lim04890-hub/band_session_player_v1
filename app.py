@@ -1494,7 +1494,19 @@ else:
                 
                 inv = m.get('inventory', "")
                 if inv:
-                    st.write(f"- **보유 장비/아이템:** {inv}")
+                    item_ids = [i.strip() for i in inv.split(",") if i.strip()]
+                    equipped_names = []
+                    
+                    for i_id in item_ids:
+                        # 전체 아이템 리스트에서 ID가 일치하는 아이템 검색
+                        match_item = next((item for item in all_possible_shop_items if item['id'] == i_id), None)
+                        if match_item:
+                            equipped_names.append(match_item['name'])
+                        else:
+                            equipped_names.append(i_id) # 매칭되지 않는 경우 ID 그대로 출력
+                    
+                    display_text = ", ".join(equipped_names)
+                    st.write(f"- **보유 장비/아이템:** {display_text}")
 
     elif selected_main_tab == "🤝 팀 조합":
         st.title("🤝 밴드 팀 조합 관리")
