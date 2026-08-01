@@ -1256,7 +1256,7 @@ else:
                     st.rerun()
 
 
-elif selected_main_tab == "🎷 합주":
+    elif selected_main_tab == "🎷 합주":
         st.title("🎷 HERTZ 팀 합주실")
         
         # 현재 활성화된 모든 합주 목록 가져오기 (시간대 충돌 검증용)
