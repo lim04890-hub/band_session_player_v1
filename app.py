@@ -62,7 +62,7 @@ INITIAL_MEMBERS = [
     ("강준", "전기전자공학부", "23", "베이스", 0),
     ("권도영", "컴퓨터공학부", "24", "보컬", 0),
     ("권찬우", "항공우주모빌리티공학과", "25", "베이스", 0),
-    ("김다혜", "화화생명에너지학부", "26", "키보드", 0),
+    ("김다혜", "화공생명에너지공학부", "26", "키보드", 0),
     ("김마루", "컴퓨터공학부", "24", "기타", 0),
     ("김민재", "전기전자공학부", "25", "기타", 0),
     ("김서윤", "환경보건과학과", "25", "드럼", 0),
@@ -942,9 +942,9 @@ else:
 
     elif selected_main_tab == "🎮 연습실 & 상점":
         st.title("🎮 HERTZ 아케이드 연습실 & 상점")
-        st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 캐릭터에 장비와 아이템을 순서대로 장착해보세요!")
+        st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 캐릭터에 장비와 아이템을 구매해보세요!")
 
-        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["🎸 연습 세션실 & 무대", "🛍️ 확장 상점 & 인벤토리", "✏️ 내 한줄소개 설정"])
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["🎸 연습실 & 무대", "🛍️ 확장 상점 & 인벤토리", "✏️ 내 한줄소개 설정"])
 
         inventory_str = member['inventory'] or ""
         my_items = [i.strip() for i in inventory_str.split(",") if i.strip()]
@@ -955,7 +955,7 @@ else:
         active_ensembles = get_active_ensembles() # 활성 상태인 모든 합주 리스트 반환
 
         with sub_tab1:
-            st.subheader("무대 위 캐릭터 공연 애니메이션 & 타이머")
+            st.subheader("연습실 & 타이머")
 
             # 현재 로그인한 멤버(member['id'])가 포함되어 있는 활성 합주 찾기
             my_active_ensemble = None
@@ -1016,7 +1016,7 @@ else:
             else:
                 timer_html_status = "[타이머 대기 중 - 연습 시작 또는 합주 탭에서 합주를 시작하세요]"
 
-            st.write(f"**칭호:** {user_title} | **본래 세션:** {member['session']} | **누적 연습 시간:** {user_practice_time}분 | **⚡ 합주 능력치:** {member.get('ensemble_stats', 0)}개")
+            st.write(f"**칭호:** {user_title} | **세션:** {member['session']} | **누적 연습 시간:** {user_practice_time}분 | **⚡ 합주 능력치:** {member.get('ensemble_stats', 0)}개")
             st.write(f"**착용 장비:** {gear_text} | **장비 총 가치:** {total_credits:,} C | **관중 수:** {audience_count}명")
 
             # JavaScript에 넘길 부원 정보 JSON 구조 생성
@@ -1201,7 +1201,7 @@ else:
                         else:
                             earned = elapsed_minutes * 30
                             add_practice_time_and_credits(member['id'], elapsed_minutes, earned)
-                            st.success(f"🎉 연습 종료! {elapsed_minutes}분 동안 연습하여 **{earned} 크레딧**을 획득했습니다!")
+                            st.success(f"🎉 [개인 연습 정산 완료]\n\n- 연습 시간: {elapsed_minutes}분\n- 획득 크레딧: +{earned:,} C\n\n확인을 눌러 종료합니다.")
                             st.session_state['is_practicing'] = False
                             st.session_state['practice_start_time'] = None
                         st.rerun()
@@ -1403,7 +1403,7 @@ else:
                     if is_active:
                         if st.button("⏹️ 합주 종료", key=f"stop_{ens_id}", type="primary", use_container_width=True):
                             earned, m_count = stop_ensemble_db(ens_id)
-                            st.success(f"합주 종료! 팀원 {m_count}명에게 능력치 +{earned}개 지급")
+                            st.success(f"🎉 [합주 정산 완료]\n\n- 합주 세션: {e['name']}\n- 참여 인원: {m_count}명\n- 획득 능력치: 팀원 전원 각 +{earned}개 지급 완료!\n\n확인을 눌러 종료됩니다.")
                             st.rerun()
                     else:
                         st.button("종료됨", key=f"stopped_{ens_id}", disabled=True, use_container_width=True)
