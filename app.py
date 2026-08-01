@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import subprocess
 import os
 import shutil
@@ -1228,7 +1227,7 @@ else:
             </script>
             """
 
-            components.html(stage_html, height=310)
+            st.iframe(stage_html, height=310)
 
             col_t_btn1, col_t_btn2 = st.columns(2)
             with col_t_btn1:
