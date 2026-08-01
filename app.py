@@ -833,7 +833,7 @@ def register_department_ui():
             conn.commit()
             conn.close()
             
-            st.success(f"성공적으로 등록되었습니다! (이름: {name}, 학과: {selected_dept_name}, 세션: {session})"))
+            st.success(f"성공적으로 등록되었습니다! (이름: {name}, 학과: {selected_dept_name}, 세션: {session})")
 
 # --- 알림 팝업(Dialog) 관리 ---
 @st.dialog("🎉 개인 연습 정산 완료")
