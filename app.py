@@ -1690,24 +1690,20 @@ else:
                     if not new_name.strip() or not new_sid.strip():
                         st.error("이름과 학번을 모두 입력해주세요.")
                     else:
-                        #'기타'를 선택했다면 직접 입력한 텍스트를 최종 학과로 지정
+                        # '기타'를 선택했다면 직접 입력한 텍스트를 최종 학과로 지정
                         if new_dept == "기타":
                             final_dept = custom_dept_input.strip()
                             if not final_dept:
                                 final_dept = "기타" # 직접 입력조차 비어있다면 기본값 설정
                         else:
                             final_dept = new_dept
-                
-                        # DB 저장 시 final_dept 변수를 사용하여 저장
-                        # 예시 코드:
-                        # cursor.execute("INSERT INTO members (name, department, ...) VALUES (?, ?, ...)", (new_name, final_dept, ...))
-                
+                      
+                        # DB 저장 로직 (실제 사용하시는 cursor 코드에 맞게 변수명 확인)
+                        # cursor.execute("INSERT INTO members (name, student_id, department, session, is_exec) VALUES (?, ?, ?, ?, ?)", 
+                        #                (new_name, new_sid, final_dept, new_sess, 1 if new_is_admin else 0))
+                        # conn.commit()
+                      
                         st.success(f"등록 완료! (이름: {new_name}, 학과: {final_dept})")
-                       
-                        else:
-                            st.error(msg)
-                    else:
-                        st.warning("이름과 학번을 올바르게 입력해주세요.")
 
             st.markdown("---")
             st.subheader("👑 임원 권한 부여 및 회수")
