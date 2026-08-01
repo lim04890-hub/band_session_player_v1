@@ -1208,7 +1208,31 @@ else:
                 else:
                     st.button("⏹️ 정지됨", disabled=True, use_container_width=True)
 
-            if st.session_state['is_practicing'] or is_ensemble_mode:
+
+            st.markdown("---")
+            st.subheader("🎷 진행 중인 합주")
+
+            for ens in active_ensembles:
+
+                col1, col2 = st.columns([4,1])
+
+                with col1:
+                    st.write(f"**{ens['name']}**")
+
+                with col2:
+                    if st.button("합주 종료", key=f"room_stop_{ens['id']}"):
+
+                        earned, m_count = stop_ensemble_db(ens['id'])
+
+                        st.session_state["ensemble_result"] = {
+                        "name": ens["name"],
+                        "earned": earned,
+                        "members": m_count
+                        }
+
+            st.rerun()
+            
+            if st.session_state['is_practicing']:
                 time.sleep(1)
                 st.rerun()
 
@@ -1403,7 +1427,12 @@ else:
                     if is_active:
                         if st.button("⏹️ 합주 종료", key=f"stop_{ens_id}", type="primary", use_container_width=True):
                             earned, m_count = stop_ensemble_db(ens_id)
-                            st.success(f"🎉 [합주 정산 완료]\n\n- 합주 세션: {e['name']}\n- 참여 인원: {m_count}명\n- 획득 능력치: 팀원 전원 각 +{earned}개 지급 완료!\n\n확인을 눌러 종료됩니다.")
+                            st.session_state["ensemble_result"] = {
+                                "name": e["name"],
+                                "earned": earned,
+                                "members": m_count
+                            }
+                            
                             st.rerun()
                     else:
                         st.button("종료됨", key=f"stopped_{ens_id}", disabled=True, use_container_width=True)
