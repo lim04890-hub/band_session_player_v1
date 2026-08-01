@@ -714,16 +714,31 @@ def get_active_ensembles():
     rows = cursor.fetchall()
     conn.close()
     
-    # SQLite 결과 딕셔너리 변환 형태에 맞추어 작성 (프로젝트 코드 스타일에 따름)
     active_list = []
     for row in rows:
+        try:
+            ens_id = row['id']
+            name = row['name']
+            team_name = row['team_name']
+            member_ids = row['member_ids']
+            is_active = row['is_active']
+            # .get() 대신 키 존재 여부 검사로 수정
+            start_time = row['start_time'] if 'start_time' in row.keys() else 0
+        except (TypeError, AttributeError, KeyError):
+            ens_id = row[0]
+            name = row[1]
+            team_name = row[2]
+            member_ids = row[3]
+            is_active = row[4]
+            start_time = row[5] if len(row) > 5 else 0
+
         active_list.append({
-            'id': row['id'],
-            'name': row['name'],
-            'team_name': row['team_name'],
-            'member_ids': row['member_ids'],
-            'is_active': row['is_active'],
-            'start_time': row.get('start_time', 0) # start_time 컬럼이 없는 경우 예외 처리
+            'id': ens_id,
+            'name': name,
+            'team_name': team_name,
+            'member_ids': member_ids,
+            'is_active': is_active,
+            'start_time': start_time
         })
     return active_list
 
