@@ -1264,7 +1264,7 @@ else:
             st.markdown(f"보유 크레딧: **{member['credits']} C** | 보유 합주 능력치: **⚡ {member.get('ensemble_stats', 0)}개**")
             st.info("💡 **상점 구매 조건:** 아이템 구매 시 해당 단계의 크레딧과 합주 능력치가 함께 소모됩니다.\n(3,000 C = 능력치 1개 소모 | 5,000 C = 3개 소모 | 10,000 C = 5개 소모)")
             
-            shop_tabs = st.tabs(["🧢 모자", "옷", "👟 신발", "💍 장신구", "🎗️ MD", "🎸 세션별 악기 장비"])
+            shop_tabs = st.tabs(["🧢 모자", "옷", "👟 신발", "💍 장신구", "🎗️ MD", "🎸 MULE"])
             categories = ["모자", "옷", "신발", "장신구", "MD"]
 
             for idx, cat_name in enumerate(categories):
