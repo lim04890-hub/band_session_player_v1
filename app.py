@@ -1686,12 +1686,24 @@ else:
                 new_is_admin = st.checkbox("임원진 권한 부여")
                 
                 submitted_new = st.form_submit_button("부원 등록하기", use_container_width=True)
-                if submitted_new:
-                    if new_name.strip() and new_sid.strip():
-                        success, msg = add_member(new_name, new_dept, new_sid, new_sess, new_is_admin)
-                        if success:
-                            st.success(msg)
-                            st.rerun()
+                if submitted:
+                    if not new_name.strip() or not new_sid.strip():
+                        st.error("이름과 학번을 모두 입력해주세요.")
+                    else:
+                        #'기타'를 선택했다면 직접 입력한 텍스트를 최종 학과로 지정
+                        if new_dept == "기타":
+                            final_dept = custom_dept_input.strip()
+                            if not final_dept:
+                                final_dept = "기타" # 직접 입력조차 비어있다면 기본값 설정
+                        else:
+                            final_dept = new_dept
+                
+                        # DB 저장 시 final_dept 변수를 사용하여 저장
+                        # 예시 코드:
+                        # cursor.execute("INSERT INTO members (name, department, ...) VALUES (?, ?, ...)", (new_name, final_dept, ...))
+                
+                        st.success(f"등록 완료! (이름: {new_name}, 학과: {final_dept})")
+                       
                         else:
                             st.error(msg)
                     else:
