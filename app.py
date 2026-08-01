@@ -1279,9 +1279,9 @@ else:
                                 can_buy = False
 
                             req_ensemble_stat = 0
-                            if item['cost'] == 5000 or 7000: req_ensemble_stat = 1
-                            elif item['cost'] == 10000 or 15000: req_ensemble_stat = 3
-                            elif item['cost'] == 20000 or 30000 : req_ensemble_stat = 5
+                            if item['cost'] in (5000, 7000): req_ensemble_stat = 1
+                            elif item['cost'] in (10000, 15000): req_ensemble_stat = 3
+                            elif item['cost'] in (20000, 30000) : req_ensemble_stat = 5
 
                             req_text = f" + ⚡ 능력치 {req_ensemble_stat}개" if req_ensemble_stat > 0 else ""
 
@@ -1320,9 +1320,9 @@ else:
                             can_buy = False
 
                         req_ensemble_stat = 0
-                        if item['cost'] == 5000 or 7000: req_ensemble_stat = 1
-                        elif item['cost'] == 10000 or 15000: req_ensemble_stat = 3
-                        elif item['cost'] == 20000 or 30000 : req_ensemble_stat = 5
+                        if item['cost'] in (5000, 7000): req_ensemble_stat = 1
+                        elif item['cost'] in (10000, 15000): req_ensemble_stat = 3
+                        elif item['cost'] in (20000, 30000) : req_ensemble_stat = 5
 
 
                         req_text = f" + ⚡ 능력치 {req_ensemble_stat}개" if req_ensemble_stat > 0 else ""
