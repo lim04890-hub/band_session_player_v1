@@ -651,18 +651,30 @@ def get_active_ensembles():
     
     active_list = []
     for row in rows:
-        # row 객체 유형에 구애받지 않고 안전하게 컬럼 값을 가져오도록 처리
+        # row가 dict 형태인지 sqlite3.Row 혹은 튜플 형태인지 안전하게 판별
         try:
+            # dict 또는 sqlite3.Row인 경우
+            ens_id = row['id']
+            name = row['name']
+            team_name = row['team_name']
+            member_ids = row['member_ids']
+            is_active = row['is_active']
             start_time = row['start_time'] if 'start_time' in row.keys() else 0
-        except (TypeError, AttributeError, IndexError):
-            start_time = 0
+        except (TypeError, AttributeError, KeyError):
+            # 튜플 형태인 경우 (인덱스 기반)
+            ens_id = row[0]
+            name = row[1]
+            team_name = row[2]
+            member_ids = row[3]
+            is_active = row[4]
+            start_time = row[5] if len(row) > 5 else 0
 
         active_list.append({
-            'id': row['id'] if 'id' in row.keys() else row[0],
-            'name': row['name'] if 'name' in row.keys() else row[1],
-            'team_name': row['team_name'] if 'team_name' in row.keys() else row[2],
-            'member_ids': row['member_ids'] if 'member_ids' in row.keys() else row[3],
-            'is_active': row['is_active'] if 'is_active' in row.keys() else row[4],
+            'id': ens_id,
+            'name': name,
+            'team_name': team_name,
+            'member_ids': member_ids,
+            'is_active': is_active,
             'start_time': start_time
         })
     return active_list
