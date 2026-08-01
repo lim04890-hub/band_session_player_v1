@@ -1683,9 +1683,9 @@ else:
         
                 new_sid = st.text_input("학번 두 자리 (예: 24)")
                 new_sess = st.selectbox("세션", ["보컬", "기타", "베이스", "드럼", "키보드"], key="add_sess")
-                new_is_admin = st.checkbox("임원진 권한 부여")
+                new_is_admin = st.checkbox("임원진 권한 부여")   
+                submitted = st.form_submit_button("부원 등록하기", use_container_width=True)
                 
-                submitted_new = st.form_submit_button("부원 등록하기", use_container_width=True)
                 if submitted:
                     if not new_name.strip() or not new_sid.strip():
                         st.error("이름과 학번을 모두 입력해주세요.")
