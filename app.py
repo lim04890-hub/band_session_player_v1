@@ -804,7 +804,7 @@ def register_department_ui():
         name = st.text_input("이름")
         student_id = st.text_input("학번")
         
-        # 학과 선택을 위한 selectbox (input() 대체)
+        # 학과 선택을 위한 selectbox
         dept_choice = st.selectbox(
             "학과를 선택하세요", 
             options=list(DEPARTMENT_DICT.keys()), 
@@ -1673,7 +1673,14 @@ else:
             st.subheader("➕ 새 부원 직접 등록")
             with st.form("add_member_form"):
                 new_name = st.text_input("이름")
+        
+                # 1. 학과 셀렉트박스
                 new_dept = st.selectbox("학과", DEPARTMENT_LIST + ["기타"], key="add_dept")
+        
+                # 2. '기타'를 선택했을 때 보여줄 직접 입력 텍스트 박스 추가
+                # (Streamlit 폼 특성상 숨김 처리가 어려우므로 항시 노출하되, '기타' 선택 시에만 활성화/반영되도록 유도)
+                custom_dept_input = st.text_input("학과 직접 입력 ('기타' 선택 시에만 적용)")
+        
                 new_sid = st.text_input("학번 두 자리 (예: 24)")
                 new_sess = st.selectbox("세션", ["보컬", "기타", "베이스", "드럼", "키보드"], key="add_sess")
                 new_is_admin = st.checkbox("임원진 권한 부여")
