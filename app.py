@@ -885,16 +885,27 @@ else:
         user_practice_time = member['practice_minutes']
         user_title = get_title_by_practice_time(user_practice_time)
 
-        # 활성 합주 체크
-        active_ens = get_active_ensemble()
+        # 1. 모든 활성 합주 목록 가져오기 (여러 팀 동시 합주 지원)
+        active_ensembles = get_active_ensembles() # 활성 합주 목록 반환 함수
 
         with sub_tab1:
             st.subheader("무대 위 캐릭터 공연 애니메이션 & 타이머")
 
-            # 활성 합주가 진행 중인 경우, 해당 팀 멤버들 전원을 무대에 렌더링
+            # 현재 로그인한 멤버(member['id'])가 포함되어 있는 활성 합주 찾기
+            my_active_ensemble = None
+            for ens in active_ensembles:
+                ens_m_ids = [int(x.strip()) for x in ens['member_ids'].split(",") if x.strip()]
+                if member['id'] in ens_m_ids:
+                    my_active_ensemble = ens
+                    break
+
+            # 2. 무대에 렌더링할 멤버 구성 조건 처리
             render_members = []
-            if active_ens and active_ens['is_active'] == 1:
-                ens_m_ids = [int(x.strip()) for x in active_ens['member_ids'].split(",") if x.strip()]
+            is_ensemble_mode = (my_active_ensemble is not None and my_active_ensemble['is_active'] == 1)
+
+            if is_ensemble_mode:
+                # 로그인한 사용자가 속한 팀이 합주 중인 경우, 해당 팀원 전원 렌더링
+                ens_m_ids = [int(x.strip()) for x in my_active_ensemble['member_ids'].split(",") if x.strip()]
                 for mid in ens_m_ids:
                     mobj = get_member_fresh(mid)
                     if mobj:
@@ -904,6 +915,7 @@ else:
                             "inventory": [i.strip() for i in (mobj['inventory'] or "").split(",") if i.strip()]
                         })
             else:
+                # 합주 중이 아니거나, 로그인한 사용자가 속하지 않은 팀만 합주 중인 경우 본인만 렌더링
                 render_members.append({
                     "name": member['name'],
                     "session": member['session'],
@@ -924,14 +936,13 @@ else:
             audience_count = max(3, min(120, 3 + (total_credits // 200)))
 
             # 타이머 상태 계산
-            is_ensemble_mode = (active_ens and active_ens['is_active'] == 1)
             is_anim_playing = st.session_state['is_practicing'] or is_ensemble_mode
 
             if is_ensemble_mode:
-                ens_elapsed = int(time.time() - active_ens['start_time'])
+                ens_elapsed = int(time.time() - my_active_ensemble['start_time'])
                 mins = ens_elapsed // 60
                 secs = ens_elapsed % 60
-                timer_html_status = f"🎷 [팀 합주 진행 중] '{active_ens['name']}': {mins:02d}분 {secs:02d}초 (30분당 능력치 1개 적립)"
+                timer_html_status = f"🎷 [소속 팀 합주 진행 중] '{my_active_ensemble['name']}': {mins:02d}분 {secs:02d}초 (30분당 능력치 1개 적립)"
             elif st.session_state['is_practicing'] and st.session_state['practice_start_time']:
                 current_elapsed_seconds = int(time.time() - st.session_state['practice_start_time'])
                 mins = current_elapsed_seconds // 60
@@ -1135,7 +1146,6 @@ else:
             if st.session_state['is_practicing'] or is_ensemble_mode:
                 time.sleep(1)
                 st.rerun()
-
         with sub_tab2:
             st.subheader("🛍️ 밴드 장비 및 패션 상점")
             st.markdown(f"보유 크레딧: **{member['credits']} C** | 보유 합주 능력치: **⚡ {member.get('ensemble_stats', 0)}개**")
