@@ -793,7 +793,7 @@ DEPARTMENT_DICT = {
     2: "전자공학과",
     3: "기계공학과",
     4: "경영학과",
-    99: "기타"
+    99: "기타(직접 입력)"
 }
 
 # 3. 터미널 input() 대신 Streamlit 컴포넌트를 사용하도록 수정한 부원 등록 함수
@@ -811,6 +811,9 @@ def register_department_ui():
             format_func=lambda x: DEPARTMENT_DICT[x]
         )
         
+        # '기타 (직접 입력)'을 선택했을 때 나타나는 입력 필드
+        custom_dept = st.text_input("직접 입력 (기타 선택 시에만 적용)")
+        
         session = st.selectbox("세션 선택", ["보컬", "일렉기타", "베이스", "드럼", "키보드"])
         is_exec = st.checkbox("임원진 권한 부여")
         
@@ -821,7 +824,11 @@ def register_department_ui():
                 st.error("이름과 학번을 모두 입력해주세요.")
                 return
 
-            selected_dept_name = DEPARTMENT_DICT[dept_choice]
+            # 학과 결정 로직 (99번 선택 시 입력한 값 사용, 미입력 시 '기타' 처리)
+            if dept_choice == 99:
+                selected_dept_name = custom_dept.strip() if custom_dept.strip() else "기타"
+            else:
+                selected_dept_name = DEPARTMENT_DICT[dept_choice]
             
             # DB 저장 로직
             conn = sqlite3.connect("hertz_app_data.db")
