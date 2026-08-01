@@ -1227,7 +1227,7 @@ else:
             </script>
             """
 
-            st.iframe(stage_html, height=310)
+            st.iframe(src="stage_html", height=310)
 
             col_t_btn1, col_t_btn2 = st.columns(2)
             with col_t_btn1:
