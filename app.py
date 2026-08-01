@@ -607,11 +607,18 @@ def get_all_ensembles():
     conn.close()
     return [dict(r) for r in rows]
 
+def delete_ensemble_db(ensemble_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM ensembles WHERE id = ?", (ensemble_id,))
+    conn.commit()
+    conn.close()
+
 def start_ensemble_db(ensemble_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     now_ts = time.time()
-    cursor.execute("UPDATE ensembles SET is_active = 0")
+    # 이전에 있던 강제 비활성화 쿼리를 삭제하여 여러 합주가 동시에 진행되도록 수정됨.
     cursor.execute("UPDATE ensembles SET is_active = 1, start_time = ? WHERE id = ?", (now_ts, ensemble_id))
     conn.commit()
     conn.close()
@@ -651,9 +658,7 @@ def get_active_ensembles():
     
     active_list = []
     for row in rows:
-        # row가 dict 형태인지 sqlite3.Row 혹은 튜플 형태인지 안전하게 판별
         try:
-            # dict 또는 sqlite3.Row인 경우
             ens_id = row['id']
             name = row['name']
             team_name = row['team_name']
@@ -661,7 +666,6 @@ def get_active_ensembles():
             is_active = row['is_active']
             start_time = row['start_time'] if 'start_time' in row.keys() else 0
         except (TypeError, AttributeError, KeyError):
-            # 튜플 형태인 경우 (인덱스 기반)
             ens_id = row[0]
             name = row[1]
             team_name = row[2]
@@ -705,42 +709,6 @@ def separate_audio(file_path, filename):
         raise FileNotFoundError(f"분리된 결과 폴더를 찾을 수 없습니다: {target_dir}")
         
     return target_dir
-
-def get_active_ensembles():
-    """현재 활성화된(is_active == 1) 모든 합주 목록을 반환합니다."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ensembles WHERE is_active = 1")
-    rows = cursor.fetchall()
-    conn.close()
-    
-    active_list = []
-    for row in rows:
-        try:
-            ens_id = row['id']
-            name = row['name']
-            team_name = row['team_name']
-            member_ids = row['member_ids']
-            is_active = row['is_active']
-            # .get() 대신 키 존재 여부 검사로 수정
-            start_time = row['start_time'] if 'start_time' in row.keys() else 0
-        except (TypeError, AttributeError, KeyError):
-            ens_id = row[0]
-            name = row[1]
-            team_name = row[2]
-            member_ids = row[3]
-            is_active = row[4]
-            start_time = row[5] if len(row) > 5 else 0
-
-        active_list.append({
-            'id': ens_id,
-            'name': name,
-            'team_name': team_name,
-            'member_ids': member_ids,
-            'is_active': is_active,
-            'start_time': start_time
-        })
-    return active_list
 
 def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
     if not selected_stems or not separated_dir or not os.path.exists(separated_dir):
@@ -817,6 +785,24 @@ def handle_logout_or_stop():
             add_practice_time_and_credits(st.session_state['member']['id'], elapsed_minutes, earned)
     st.session_state['is_practicing'] = False
     st.session_state['practice_start_time'] = None
+
+# --- 알림 팝업(Dialog) 관리 ---
+@st.dialog("🎉 개인 연습 정산 완료")
+def practice_result_dialog(elapsed_minutes, earned):
+    st.write(f"- **연습 시간**: {elapsed_minutes}분")
+    st.write(f"- **획득 크레딧**: +{earned:,} C")
+    if st.button("확인"):
+        st.session_state['is_practicing'] = False
+        st.session_state['practice_start_time'] = None
+        st.rerun()
+
+@st.dialog("🎉 합주 정산 완료")
+def ensemble_result_dialog(ens_name, m_count, earned):
+    st.write(f"- **합주 세션**: {ens_name}")
+    st.write(f"- **참여 인원**: {m_count}명")
+    st.write(f"- **획득 능력치**: 팀원 전원 각 +{earned}개 지급 완료!")
+    if st.button("확인"):
+        st.rerun()
 
 
 # --- UI 레이아웃 ---
@@ -951,13 +937,11 @@ else:
         user_practice_time = member['practice_minutes']
         user_title = get_title_by_practice_time(user_practice_time)
 
-        # 1. 모든 활성 합주 목록 가져오기 (여러 팀 동시 합주 지원 함수)
-        active_ensembles = get_active_ensembles() # 활성 상태인 모든 합주 리스트 반환
+        active_ensembles = get_active_ensembles()
 
         with sub_tab1:
             st.subheader("연습실 & 타이머")
 
-            # 현재 로그인한 멤버(member['id'])가 포함되어 있는 활성 합주 찾기
             my_active_ensemble = None
             for ens in active_ensembles:
                 ens_m_ids = [int(x.strip()) for x in ens['member_ids'].split(",") if x.strip()]
@@ -965,7 +949,6 @@ else:
                     my_active_ensemble = ens
                     break
 
-            # 2. 무대에 렌더링할 멤버 구성 조건 처리 (로그인한 멤버가 속한 팀이 합주 중일 때만 팀원들 표시)
             render_members = []
             is_ensemble_mode = (my_active_ensemble is not None)
 
@@ -980,7 +963,6 @@ else:
                             "inventory": [i.strip() for i in (mobj['inventory'] or "").split(",") if i.strip()]
                         })
             else:
-                # 합주 중이 아니거나, 내가 속하지 않은 팀이 합주 중인 경우 본인만 렌더링
                 render_members.append({
                     "name": member['name'],
                     "session": member['session'],
@@ -1000,32 +982,28 @@ else:
             gear_text = " | ".join(equipped_display) if equipped_display else "기본 장비 착용 중"
             audience_count = max(3, min(120, 3 + (total_credits // 200)))
 
-            # 타이머 상태 계산
             is_anim_playing = st.session_state['is_practicing'] or is_ensemble_mode
-
-            if is_ensemble_mode:
-                ens_elapsed = int(time.time() - my_active_ensemble['start_time'])
-                mins = ens_elapsed // 60
-                secs = ens_elapsed % 60
-                timer_html_status = f"🎷 [소속 팀 합주 진행 중] '{my_active_ensemble['name']}': {mins:02d}분 {secs:02d}초 (30분당 능력치 1개 적립)"
-            elif st.session_state['is_practicing'] and st.session_state['practice_start_time']:
-                current_elapsed_seconds = int(time.time() - st.session_state['practice_start_time'])
-                mins = current_elapsed_seconds // 60
-                secs = current_elapsed_seconds % 60
-                timer_html_status = f"⏱️ [개인 연습 진행 중]: {mins:02d}분 {secs:02d}초"
-            else:
-                timer_html_status = "[타이머 대기 중 - 연습 시작 또는 합주 탭에서 합주를 시작하세요]"
 
             st.write(f"**칭호:** {user_title} | **세션:** {member['session']} | **누적 연습 시간:** {user_practice_time}분 | **⚡ 합주 능력치:** {member.get('ensemble_stats', 0)}개")
             st.write(f"**착용 장비:** {gear_text} | **장비 총 가치:** {total_credits:,} C | **관중 수:** {audience_count}명")
 
-            # JavaScript에 넘길 부원 정보 JSON 구조 생성
+            # Javascript로 타이머 계산을 넘기기 위한 변수들
             members_json = json.dumps(render_members, ensure_ascii=False)
             is_playing_str = "true" if is_anim_playing else "false"
-
+            is_ensemble_mode_str = "true" if is_ensemble_mode else "false"
+            is_practicing_str = "true" if (st.session_state['is_practicing'] and st.session_state['practice_start_time']) else "false"
+            
+            start_ts = 0
+            ens_name = ""
+            if is_ensemble_mode:
+                start_ts = my_active_ensemble['start_time']
+                ens_name = my_active_ensemble['name']
+            elif st.session_state['is_practicing'] and st.session_state['practice_start_time']:
+                start_ts = st.session_state['practice_start_time']
+                
             stage_html = f"""
             <div style="text-align: center; background-color: #0d0d15; padding: 12px; border-radius: 10px; font-family: sans-serif;">
-                <div style="color: #00FF66; font-weight: bold; font-size: 15px; margin-bottom: 8px;">{timer_html_status}</div>
+                <div id="timerStatus" style="color: #00FF66; font-weight: bold; font-size: 15px; margin-bottom: 8px;">타이머 상태 동기화 중...</div>
                 <canvas id="stageCanvas" width="620" height="260" style="border:2px solid #2a2a3d; image-rendering: pixelated; border-radius: 8px;"></canvas>
             </div>
 
@@ -1036,6 +1014,11 @@ else:
             const isPlaying = {is_playing_str};
             const audienceCount = {audience_count};
             const bandMembers = {members_json};
+            
+            const isEnsemble = {is_ensemble_mode_str};
+            const isPracticing = {is_practicing_str};
+            const startTimeTs = {start_ts};
+            const ensName = "{ens_name}";
 
             let frame = 0;
 
@@ -1049,8 +1032,29 @@ else:
                     offset: Math.random() * Math.PI * 2
                 }});
             }}
+            
+            function updateTimer() {{
+                const statusDiv = document.getElementById('timerStatus');
+                if (!statusDiv) return;
+                
+                if (isEnsemble && startTimeTs > 0) {{
+                    const elapsed = Math.floor(Date.now() / 1000 - startTimeTs);
+                    const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+                    const secs = String(elapsed % 60).padStart(2, '0');
+                    statusDiv.innerText = `🎷 [소속 팀 합주 진행 중] '${{ensName}}': ${{mins}}분 ${{secs}}초 (30분당 능력치 1개 적립)`;
+                }} else if (isPracticing && startTimeTs > 0) {{
+                    const elapsed = Math.floor(Date.now() / 1000 - startTimeTs);
+                    const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+                    const secs = String(elapsed % 60).padStart(2, '0');
+                    statusDiv.innerText = `⏱️ [개인 연습 진행 중]: ${{mins}}분 ${{secs}}초`;
+                }} else {{
+                    statusDiv.innerText = "[타이머 대기 중 - 연습 시작 또는 합주 탭에서 합주를 시작하세요]";
+                }}
+            }}
 
             function render() {{
+                updateTimer();
+                
                 ctx.fillStyle = '#0a0a16';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -1198,19 +1202,13 @@ else:
                             st.warning("⚠️ 1분 이상 연습해야 크레딧이 적립됩니다.")
                             st.session_state['is_practicing'] = False
                             st.session_state['practice_start_time'] = None
+                            st.rerun()
                         else:
                             earned = elapsed_minutes * 30
                             add_practice_time_and_credits(member['id'], elapsed_minutes, earned)
-                            st.success(f"🎉 [개인 연습 정산 완료]\n\n- 연습 시간: {elapsed_minutes}분\n- 획득 크레딧: +{earned:,} C\n\n확인을 눌러 종료합니다.")
-                            st.session_state['is_practicing'] = False
-                            st.session_state['practice_start_time'] = None
-                        st.rerun()
+                            practice_result_dialog(elapsed_minutes, earned)
                 else:
                     st.button("⏹️ 정지됨", disabled=True, use_container_width=True)
-
-            if st.session_state['is_practicing'] or is_ensemble_mode:
-                time.sleep(1)
-                st.rerun()
 
         with sub_tab2:
             st.subheader("🛍️ 밴드 장비 및 패션 상점")
@@ -1325,8 +1323,7 @@ else:
     elif selected_main_tab == "🎷 합주":
         st.title("🎷 HERTZ 팀 합주실")
         
-        # 현재 활성화된 모든 합주 목록 가져오기 (시간대 충돌 검증용)
-        active_ensembles = get_active_ensembles() if 'get_active_ensembles' in globals() else []
+        active_ensembles = get_active_ensembles()
 
         st.subheader("➕ 새 합주 개설하기")
 
@@ -1362,7 +1359,6 @@ else:
                 is_active = (e.get('is_active', 0) == 1)
                 status = "🔴 [진행 중]" if is_active else "⚪ [대기 중]"
                 
-                # 팀에 속한 멤버 ID 추출 (문자열 또는 리스트 형태 대응)
                 if isinstance(e.get('member_ids'), str):
                     ens_member_ids = [int(x.strip()) for x in e['member_ids'].split(",") if x.strip()]
                 else:
@@ -1370,13 +1366,11 @@ else:
 
                 st.markdown(f"**{e['name']}** {status}  \n배정 팀: {e['team_name']}")
                 
-                # 합주 목록 각 항목별로 시작 / 종료 / 삭제 버튼을 나란히 배치
                 col_btn1, col_btn2, col_btn3 = st.columns(3)
                 
                 with col_btn1:
                     if not is_active:
                         if st.button("▶️ 합주 시작", key=f"start_{ens_id}", use_container_width=True):
-                            # 시간대 충돌 방지: 다른 진행 중인 합주에 동일 멤버가 포함되어 있는지 검증
                             conflict = False
                             for active in active_ensembles:
                                 if active['id'] == ens_id:
@@ -1403,8 +1397,7 @@ else:
                     if is_active:
                         if st.button("⏹️ 합주 종료", key=f"stop_{ens_id}", type="primary", use_container_width=True):
                             earned, m_count = stop_ensemble_db(ens_id)
-                            st.success(f"🎉 [합주 정산 완료]\n\n- 합주 세션: {e['name']}\n- 참여 인원: {m_count}명\n- 획득 능력치: 팀원 전원 각 +{earned}개 지급 완료!\n\n확인을 눌러 종료됩니다.")
-                            st.rerun()
+                            ensemble_result_dialog(e['name'], m_count, earned)
                     else:
                         st.button("종료됨", key=f"stopped_{ens_id}", disabled=True, use_container_width=True)
                         
