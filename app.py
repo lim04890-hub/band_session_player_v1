@@ -206,7 +206,7 @@ def init_db():
                 inventory TEXT DEFAULT '',
                 practice_minutes INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
-                bio TEXT DEFAULT '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!',
+                bio TEXT DEFAULT '안녕하세요! 열심히 하겠습니다!',
                 ensemble_stats INTEGER DEFAULT 0
             )
         ''')
@@ -217,7 +217,7 @@ def init_db():
         if 'inventory' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN inventory TEXT DEFAULT ''")
         if 'practice_minutes' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN practice_minutes INTEGER DEFAULT 0")
         if 'is_active' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN is_active INTEGER DEFAULT 1")
-        if 'bio' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN bio TEXT DEFAULT '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!'")
+        if 'bio' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN bio TEXT DEFAULT '안녕하세요! 열심히 하겠습니다!'")
         if 'ensemble_stats' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN ensemble_stats INTEGER DEFAULT 0")
 
         cursor.execute('''
@@ -284,7 +284,7 @@ def init_db():
             for item in INITIAL_MEMBERS:
                 cursor.execute('''
                     INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio, ensemble_stats)
-                    VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!', 0)
+                    VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! 열심히 하겠습니다!', 0)
                 ''', item)
             
         conn.commit()
@@ -335,7 +335,7 @@ def add_member(name, department, student_id, session, is_admin):
     try:
         cursor.execute('''
             INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio, ensemble_stats)
-            VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! HERTZ 밴드 활동 열심히 하겠습니다!', 0)
+            VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! 열심히 하겠습니다!', 0)
         ''', (name.strip(), department.strip(), str(student_id).strip(), session, 1 if is_admin else 0))
         conn.commit()
         return True, "부원이 성공적으로 추가되었습니다."
@@ -786,61 +786,6 @@ def handle_logout_or_stop():
     st.session_state['is_practicing'] = False
     st.session_state['practice_start_time'] = None
 
-# 2. 전역 학과 딕셔너리
-DEPARTMENT_DICT = {
-    1: "컴퓨터공학과",
-    2: "전자공학과",
-    3: "기계공학과",
-    4: "경영학과",
-    99: "기타(직접 입력)"
-}
-
-# 3. 터미널 input() 대신 Streamlit 컴포넌트를 사용하도록 수정한 부원 등록 함수
-def register_department_ui():
-    st.subheader("👥 신규 부원 등록 시스템")
-    
-    with st.form("register_form"):
-        name = st.text_input("이름")
-        student_id = st.text_input("학번")
-        
-        # 학과 선택을 위한 selectbox
-        dept_choice = st.selectbox(
-            "학과를 선택하세요", 
-            options=list(DEPARTMENT_DICT.keys()), 
-            format_func=lambda x: DEPARTMENT_DICT[x]
-        )
-        
-        # '기타 (직접 입력)'을 선택했을 때 나타나는 입력 필드
-        custom_dept = st.text_input("직접 입력 (기타 선택 시에만 적용)")
-        
-        session = st.selectbox("세션 선택", ["보컬", "일렉기타", "베이스", "드럼", "키보드"])
-        is_exec = st.checkbox("임원진 권한 부여")
-        
-        submitted = st.form_submit_button("부원 등록하기")
-        
-        if submitted:
-            if not name or not student_id:
-                st.error("이름과 학번을 모두 입력해주세요.")
-                return
-
-            # 학과 결정 로직 (99번 선택 시 입력한 값 사용, 미입력 시 '기타' 처리)
-            if dept_choice == 99:
-                selected_dept_name = custom_dept.strip() if custom_dept.strip() else "기타"
-            else:
-                selected_dept_name = DEPARTMENT_DICT[dept_choice]
-            
-            # DB 저장 로직
-            conn = sqlite3.connect("hertz_app_data.db")
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO members (name, student_id, department, session, is_exec) VALUES (?, ?, ?, ?, ?)",
-                (name, student_id, selected_dept_name, session, 1 if is_exec else 0)
-            )
-            conn.commit()
-            conn.close()
-            
-            st.success(f"성공적으로 등록되었습니다! (이름: {name}, 학과: {selected_dept_name}, 세션: {session})")
-
 # --- 알림 팝업(Dialog) 관리 ---
 @st.dialog("🎉 개인 연습 정산 완료")
 def practice_result_dialog(elapsed_minutes, earned):
@@ -871,7 +816,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if st.session_state['member'] is None:
-    st.subheader("⚡ HERTZ 부원 인증 로그인")
+    st.subheader("⚡ HERTZ 부원 로그인")
     with st.form("login_form"):
         input_name = st.text_input("이름")
         input_dept = st.selectbox("학과", DEPARTMENT_LIST + ["기타"])
@@ -982,10 +927,10 @@ else:
                     with open(mix_path, "rb") as f: st.download_button("다운로드", f, file_name="mix.wav")
 
     elif selected_main_tab == "🎮 연습실 & 상점":
-        st.title("🎮 HERTZ 아케이드 연습실 & 상점")
-        st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 캐릭터에 장비와 아이템을 구매해보세요!")
+        st.title("🎮 HERTZ 연습실 & 상점")
+        st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 장비와 아이템을 구매해보세요!")
 
-        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["🎸 연습실 & 무대", "🛍️ 확장 상점 & 인벤토리", "✏️ 내 한줄소개 설정"])
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["🎸 연습실 & 무대", "🛍️ 상점 & 인벤토리", "✏️ 내 한줄소개 설정"])
 
         inventory_str = member['inventory'] or ""
         my_items = [i.strip() for i in inventory_str.split(",") if i.strip()]
@@ -995,7 +940,7 @@ else:
         active_ensembles = get_active_ensembles()
 
         with sub_tab1:
-            st.subheader("연습실 & 타이머")
+            st.subheader("연습실 & 무대")
 
             my_active_ensemble = None
             for ens in active_ensembles:
@@ -1034,7 +979,7 @@ else:
                     item_cost = match_obj.get('cost', 1000)
                     total_credits += item_cost
 
-            gear_text = " | ".join(equipped_display) if equipped_display else "기본 장비 착용 중"
+            gear_text = " | ".join(equipped_display) if equipped_display else "합주실 장비 대여 중"
             audience_count = max(3, min(120, 3 + (total_credits // 200)))
 
             is_anim_playing = st.session_state['is_practicing'] or is_ensemble_mode
@@ -1314,7 +1259,7 @@ else:
                                         st.error(msg)
 
             with shop_tabs[5]:
-                st.markdown("### 🎸 세션별 악기 및 장비 상점")
+                st.markdown("### 🎸 MULE")
                 selected_gear_session = st.selectbox("조회할 악기 세션 선택", ["기타", "베이스", "보컬", "드럼", "키보드"])
                 target_gear_list = SESSION_GEAR_ITEMS[selected_gear_session]
                 
@@ -1568,7 +1513,7 @@ else:
                     manual_team_configs.append({"name": t_name, "members": t_members})
                     st.markdown("---")
                 
-                if st.button("💾 모든 팀 일괄 저장", type="primary", disabled=(member['is_admin'] == 0)):
+                if st.button("💾 팀 저장", type="primary", disabled=(member['is_admin'] == 0)):
                     success_count = 0
                     error_msgs = []
                     
@@ -1677,7 +1622,6 @@ else:
                 new_dept = st.selectbox("학과", DEPARTMENT_LIST + ["기타"], key="add_dept")
         
                 # 2. '기타'를 선택했을 때 보여줄 직접 입력 텍스트 박스 추가
-                # (Streamlit 폼 특성상 숨김 처리가 어려우므로 항시 노출하되, '기타' 선택 시에만 활성화/반영되도록 유도)
                 custom_dept_input = st.text_input("학과 직접 입력 ('기타' 선택 시에만 적용)")
         
                 new_sid = st.text_input("학번 두 자리 (예: 24)")
