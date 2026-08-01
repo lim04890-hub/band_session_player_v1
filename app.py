@@ -450,9 +450,9 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
             return False, f"이전 단계 아이템인 [{category_items[target_idx - 1]['name']}]을(를) 먼저 구매해야 합니다!"
 
     req_ensemble_stat = 0
-    if cost == 5000 and 7000 : req_ensemble_stat = 1
-    elif cost == 10000 and 15000 : req_ensemble_stat = 3
-    elif cost == 20000 and 30000 : req_ensemble_stat = 5
+    if target_idx == 1 : req_ensemble_stat = 1
+    elif target_idx == 2 : req_ensemble_stat = 3
+    elif target_idx == 3 : req_ensemble_stat = 5
 
     if current_credits < cost and current_ensemble_stats < req_ensemble_stat:
         conn.close()
