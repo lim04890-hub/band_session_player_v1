@@ -11,6 +11,7 @@ import json
 import random
 from datetime import datetime
 import imageio_ffmpeg
+import pandas as pd
 
 # 디렉토리 및 DB 설정
 UPLOAD_DIR = "uploaded_audio"
@@ -786,43 +787,53 @@ def handle_logout_or_stop():
     st.session_state['is_practicing'] = False
     st.session_state['practice_start_time'] = None
 
-# 전역 학과 딕셔너리 (초기값 설정, 99번을 '기타'로 고정)
-department_dict = {
+# 2. 전역 학과 딕셔너리
+DEPARTMENT_DICT = {
     1: "컴퓨터공학과",
     2: "전자공학과",
+    3: "기계공학과",
+    4: "경영학과",
     99: "기타"
 }
-# 새로운 학과 멤버 등록
-def register_department():
-    print("=== 학과 선택 ===")
-    for key, value in department_dict.items():
-        print(f"{key}. {value}")
-    
-    choice = int(input("학과 번호를 선택하세요: "))
-    
-    # '기타' 옵션을 선택한 경우
-    if choice == 99:
-        new_dept = input("새로운 학과 이름을 입력하세요: ")
-        
-        # 기존 학과 키 목록에서 99('기타')를 제외한 후 가장 큰 키값 검색
-        existing_keys = [k for k in department_dict.keys() if k != 99]
-        new_key = max(existing_keys) + 1 if existing_keys else 1
-        
-        # 딕셔너리에 새 학과 자동 등록
-        department_dict[new_key] = new_dept
-        
-        return new_dept
-        
-    elif choice in department_dict:
-        return department_dict[choice]
-    else:
-        print("잘못된 번호입니다.")
-        return None
 
-# 실행 예시
-selected_dept = register_department()
-print(f"\n[진행 결과] 선택된 학과: {selected_dept}")
-print(f"[진행 결과] 업데이트된 딕셔너리: {department_dict}")
+# 3. 터미널 input() 대신 Streamlit 컴포넌트를 사용하도록 수정한 부원 등록 함수
+def register_department_ui():
+    st.subheader("👥 신규 부원 등록 시스템")
+    
+    with st.form("register_form"):
+        name = st.text_input("이름")
+        student_id = st.text_input("학번")
+        
+        # 학과 선택을 위한 selectbox (input() 대체)
+        dept_choice = st.selectbox(
+            "학과를 선택하세요", 
+            options=list(DEPARTMENT_DICT.keys()), 
+            format_func=lambda x: DEPARTMENT_DICT[x]
+        )
+        
+        session = st.selectbox("세션 선택", ["보컬", "일렉기타", "베이스", "드럼", "키보드"])
+        is_exec = st.checkbox("임원진 권한 부여")
+        
+        submitted = st.form_submit_button("부원 등록하기")
+        
+        if submitted:
+            if not name or not student_id:
+                st.error("이름과 학번을 모두 입력해주세요.")
+                return
+
+            selected_dept_name = DEPARTMENT_DICT[dept_choice]
+            
+            # DB 저장 로직
+            conn = sqlite3.connect("hertz_app_data.db")
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO members (name, student_id, department, session, is_exec) VALUES (?, ?, ?, ?, ?)",
+                (name, student_id, selected_dept_name, session, 1 if is_exec else 0)
+            )
+            conn.commit()
+            conn.close()
+            
+            st.success(f"성공적으로 등록되었습니다! (이름: {name}, 학과: {selected_dept_name}, 세션: {session})"))
 
 # --- 알림 팝업(Dialog) 관리 ---
 @st.dialog("🎉 개인 연습 정산 완료")
