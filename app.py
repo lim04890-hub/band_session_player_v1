@@ -850,7 +850,8 @@ def ensemble_result_dialog(ens_name, m_count, earned):
     if st.button("확인"):
         st.rerun()
 
-
+# --- 추가 관중 수 ---
+add_aud = {total_credits:,} / 1000
 # --- UI 레이아웃 ---
 st.markdown("""
     <div class="hertz-header">
@@ -1250,7 +1251,7 @@ else:
                             st.session_state['practice_start_time'] = None
                             st.rerun()
                         else:
-                            bonus_credits = audienceCount * 0.1
+                            bonus_credits = add_aud * 0.1
                             earned = int(round((elapsed_minutes * 30) + bonus_credits))
 
                             add_practice_time_and_credits(member['id'], elapsed_minutes, earned)
