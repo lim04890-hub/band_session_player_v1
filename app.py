@@ -1283,7 +1283,7 @@ else:
                             elif item['cost'] == 10000 or 15000: req_ensemble_stat = 3
                             elif item['cost'] == 20000 or 30000 : req_ensemble_stat = 5
 
-                            req_text = f" + ⚡ 능력치 {req_stat}개" if req_stat > 0 else ""
+                            req_text = f" + ⚡ 능력치 {req_ensemble_stat}개" if req_ensemble_stat > 0 else ""
 
                             st.markdown(f"""
                                 <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
@@ -1325,7 +1325,7 @@ else:
                         elif item['cost'] == 20000 or 30000 : req_ensemble_stat = 5
 
 
-                        req_text = f" + ⚡ 능력치 {req_stat}개" if req_stat > 0 else ""
+                        req_text = f" + ⚡ 능력치 {req_ensemble_stat}개" if req_ensemble_stat > 0 else ""
 
                         st.markdown(f"""
                             <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
