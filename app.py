@@ -874,7 +874,7 @@ else:
                     st.audio(mix_path)
                     with open(mix_path, "rb") as f: st.download_button("다운로드", f, file_name="mix.wav")
 
-    elif selected_main_tab == "🎮 연습실 & 상점":
+elif selected_main_tab == "🎮 연습실 & 상점":
         st.title("🎮 HERTZ 아케이드 연습실 & 상점")
         st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 캐릭터에 장비와 아이템을 순서대로 장착해보세요!")
 
@@ -885,16 +885,26 @@ else:
         user_practice_time = member['practice_minutes']
         user_title = get_title_by_practice_time(user_practice_time)
 
-        # 활성 합주 체크
-        active_ens = get_active_ensemble()
+        # 1. 모든 활성 합주 목록 가져오기 (여러 팀 동시 합주 지원 함수)
+        active_ensembles = get_active_ensembles() # 활성 상태인 모든 합주 리스트 반환
 
         with sub_tab1:
             st.subheader("무대 위 캐릭터 공연 애니메이션 & 타이머")
 
-            # 활성 합주가 진행 중인 경우, 해당 팀 멤버들 전원을 무대에 렌더링
+            # 현재 로그인한 멤버(member['id'])가 포함되어 있는 활성 합주 찾기
+            my_active_ensemble = None
+            for ens in active_ensembles:
+                ens_m_ids = [int(x.strip()) for x in ens['member_ids'].split(",") if x.strip()]
+                if member['id'] in ens_m_ids and ens.get('is_active') == 1:
+                    my_active_ensemble = ens
+                    break
+
+            # 2. 무대에 렌더링할 멤버 구성 조건 처리 (로그인한 멤버가 속한 팀이 합주 중일 때만 팀원들 표시)
             render_members = []
-            if active_ens and active_ens['is_active'] == 1:
-                ens_m_ids = [int(x.strip()) for x in active_ens['member_ids'].split(",") if x.strip()]
+            is_ensemble_mode = (my_active_ensemble is not None)
+
+            if is_ensemble_mode:
+                ens_m_ids = [int(x.strip()) for x in my_active_ensemble['member_ids'].split(",") if x.strip()]
                 for mid in ens_m_ids:
                     mobj = get_member_fresh(mid)
                     if mobj:
@@ -904,6 +914,7 @@ else:
                             "inventory": [i.strip() for i in (mobj['inventory'] or "").split(",") if i.strip()]
                         })
             else:
+                # 합주 중이 아니거나, 내가 속하지 않은 팀이 합주 중인 경우 본인만 렌더링
                 render_members.append({
                     "name": member['name'],
                     "session": member['session'],
@@ -924,14 +935,13 @@ else:
             audience_count = max(3, min(120, 3 + (total_credits // 200)))
 
             # 타이머 상태 계산
-            is_ensemble_mode = (active_ens and active_ens['is_active'] == 1)
             is_anim_playing = st.session_state['is_practicing'] or is_ensemble_mode
 
             if is_ensemble_mode:
-                ens_elapsed = int(time.time() - active_ens['start_time'])
+                ens_elapsed = int(time.time() - my_active_ensemble['start_time'])
                 mins = ens_elapsed // 60
                 secs = ens_elapsed % 60
-                timer_html_status = f"🎷 [팀 합주 진행 중] '{active_ens['name']}': {mins:02d}분 {secs:02d}초 (30분당 능력치 1개 적립)"
+                timer_html_status = f"🎷 [소속 팀 합주 진행 중] '{my_active_ensemble['name']}': {mins:02d}분 {secs:02d}초 (30분당 능력치 1개 적립)"
             elif st.session_state['is_practicing'] and st.session_state['practice_start_time']:
                 current_elapsed_seconds = int(time.time() - st.session_state['practice_start_time'])
                 mins = current_elapsed_seconds // 60
@@ -1246,18 +1256,12 @@ else:
                     st.rerun()
 
 
-    elif selected_main_tab == "🎷 합주":
+elif selected_main_tab == "🎷 합주":
         st.title("🎷 HERTZ 팀 합주실")
-        active_ens = get_active_ensemble()
+        
+        # 현재 활성화된 모든 합주 목록 가져오기 (시간대 충돌 검증용)
+        active_ensembles = get_active_ensembles() if 'get_active_ensembles' in globals() else []
 
-        if active_ens and active_ens['is_active'] == 1:
-            st.markdown(f"### 🔴 진행 중: {active_ens['name']} (배정 팀: {active_ens['team_name']})")
-            if st.button("⏹️ 현재 합주 종료 및 능력치 정산", type="primary"):
-                earned, m_count = stop_ensemble_db(active_ens['id'])
-                st.success(f"합주 종료! 팀원 {m_count}명에게 능력치 +{earned}개 지급")
-                st.rerun()
-
-        st.markdown("---")
         st.subheader("➕ 새 합주 개설하기")
 
         saved_teams = get_all_saved_teams()
@@ -1284,16 +1288,73 @@ else:
 
         st.markdown("---")
         st.subheader("📋 개설된 합주 목록")
+        
         ensembles = get_all_ensembles()
         if ensembles:
             for e in ensembles:
-                col1, col2 = st.columns([3, 1])
-                status = "🔴 [진행 중]" if e['is_active'] == 1 else "⚪ [대기 중]"
-                col1.markdown(f"**{e['name']}** {status}\n배정 팀: {e['team_name']}")
-                if e['is_active'] == 0:
-                    if col2.button("▶️ 합주 시작", key=f"start_{e['id']}"):
-                        start_ensemble_db(e['id'])
-                        st.rerun()
+                ens_id = e['id']
+                is_active = (e.get('is_active', 0) == 1)
+                status = "🔴 [진행 중]" if is_active else "⚪ [대기 중]"
+                
+                # 팀에 속한 멤버 ID 추출 (문자열 또는 리스트 형태 대응)
+                if isinstance(e.get('member_ids'), str):
+                    ens_member_ids = [int(x.strip()) for x in e['member_ids'].split(",") if x.strip()]
+                else:
+                    ens_member_ids = e.get('member_ids', [])
+
+                st.markdown(f"**{e['name']}** {status}  \n배정 팀: {e['team_name']}")
+                
+                # 합주 목록 각 항목별로 시작 / 종료 / 삭제 버튼을 나란히 배치
+                col_btn1, col_btn2, col_btn3 = st.columns(3)
+                
+                with col_btn1:
+                    if not is_active:
+                        if st.button("▶️ 합주 시작", key=f"start_{ens_id}", use_container_width=True):
+                            # 시간대 충돌 방지: 다른 진행 중인 합주에 동일 멤버가 포함되어 있는지 검증
+                            conflict = False
+                            for active in active_ensembles:
+                                if active['id'] == ens_id:
+                                    continue
+                                if isinstance(active.get('member_ids'), str):
+                                    active_m_ids = [int(x.strip()) for x in active['member_ids'].split(",") if x.strip()]
+                                else:
+                                    active_m_ids = active.get('member_ids', [])
+                                    
+                                if set(ens_member_ids) & set(active_m_ids):
+                                    conflict = True
+                                    break
+                            
+                            if conflict:
+                                st.error("⚠️ 같은 시간대에 이미 합주 중인 멤버가 포함되어 있습니다.")
+                            else:
+                                start_ensemble_db(ens_id)
+                                st.success(f"'{e['name']}' 합주가 시작되었습니다!")
+                                st.rerun()
+                    else:
+                        st.button("진행 중 ⚡", key=f"running_{ens_id}", disabled=True, use_container_width=True)
+                        
+                with col_btn2:
+                    if is_active:
+                        if st.button("⏹️ 합주 종료", key=f"stop_{ens_id}", type="primary", use_container_width=True):
+                            earned, m_count = stop_ensemble_db(ens_id)
+                            st.success(f"합주 종료! 팀원 {m_count}명에게 능력치 +{earned}개 지급")
+                            st.rerun()
+                    else:
+                        st.button("종료됨", key=f"stopped_{ens_id}", disabled=True, use_container_width=True)
+                        
+                with col_btn3:
+                    if not is_active:
+                        if st.button("🗑️ 팀 삭제", key=f"delete_{ens_id}", use_container_width=True):
+                            if 'delete_ensemble_db' in globals():
+                                delete_ensemble_db(ens_id)
+                            st.warning(f"'{e['name']}' 합주 세션이 삭제되었습니다.")
+                            st.rerun()
+                    else:
+                        st.button("삭제 불가 (진행중)", key=f"del_lock_{ens_id}", disabled=True, use_container_width=True)
+                
+                st.markdown("---")
+        else:
+            st.info("개설된 합주 목록이 없습니다.")
 
     elif selected_main_tab == "👥 부원 목록":
         st.title("👥 HERTZ 전체 부원 명단")
