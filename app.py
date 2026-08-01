@@ -851,7 +851,7 @@ def ensemble_result_dialog(ens_name, m_count, earned):
         st.rerun()
 
 # --- 추가 관중 수 ---
-add_aud = {total_credits:,} / 1000
+add_aud = total_credits / 1000
 # --- UI 레이아웃 ---
 st.markdown("""
     <div class="hertz-header">
