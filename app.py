@@ -876,76 +876,375 @@ else:
 
     elif selected_main_tab == "🎮 연습실 & 상점":
         st.title("🎮 HERTZ 아케이드 연습실 & 상점")
-        arcade_tab1, arcade_tab2 = st.tabs(["⏱️ 개인 연습실 (크레딧 파밍)", "🛒 장비 상점 & 스킨"])
-        
-        with arcade_tab1:
-            st.markdown("### ⏱️ 개인 연습실")
-            st.write("연습실 타이머를 켜고 악기를 연습하세요! 흐른 시간에 비례해 **크레딧(C)**과 **합주 능력치(⚡)**가 적립됩니다.")
-            st.info("💡 1분당 30 C 적립 | ⚡ 합주 능력치는 30분마다 1개씩 획득 가능합니다.")
-            
-            user_practice_mins = member.get('practice_minutes', 0)
-            user_title = get_title_by_practice_time(user_practice_mins)
-            st.markdown(f"**현재 내 누적 연습 시간:** {user_practice_mins}분 | **칭호:** {user_title}")
-            
-            if not st.session_state['is_practicing']:
-                if st.button("🔴 연습 시작하기", type="primary", use_container_width=True):
-                    st.session_state['is_practicing'] = True
-                    st.session_state['practice_start_time'] = time.time()
-                    st.rerun()
-            else:
-                elapsed_sec = time.time() - st.session_state['practice_start_time']
-                st.warning(f"🔴 연습 진행 중... (경과 시간: {int(elapsed_sec // 60)}분 {int(elapsed_sec % 60)}초)")
-                if st.button("⏹️ 연습 종료 및 정산하기", type="primary", use_container_width=True):
-                    elapsed_minutes = int(elapsed_sec // 60)
-                    if elapsed_minutes >= 1:
-                        earned = elapsed_minutes * 30
-                        add_practice_time_and_credits(member['id'], elapsed_minutes, earned)
-                        st.success(f"연습 종료! {elapsed_minutes}분 동안 연습하여 크레딧 +{earned} C가 적립되었습니다.")
-                    else:
-                        st.info("1분 미만은 정산되지 않습니다.")
-                    st.session_state['is_practicing'] = False
-                    st.session_state['practice_start_time'] = None
-                    st.rerun()
+        st.caption("실시간 타이머로 연습을 기록하고 크레딧을 모아 캐릭터에 장비와 아이템을 순서대로 장착해보세요!")
 
-        with arcade_tab2:
-            st.markdown("### 🛒 HERTZ 장비 상점")
-            shop_tab_choice = st.radio("상점 카테고리", ["공통 장비 (모자/옷/신발/장신구/MD)", f"내 세션 장비 ({member['session']})"], horizontal=True)
-            
-            user_inventory = [i.strip() for i in (member.get('inventory', "") or "").split(",") if i.strip()]
-            
-            if "공통 장비" in shop_tab_choice:
-                sub_cats = ["모자", "옷", "신발", "장신구", "MD"]
-                selected_sub_cat = st.selectbox("분류 선택", sub_cats)
-                items_to_show = COMMON_SHOP_ITEMS[selected_sub_cat]
-            else:
-                items_to_show = SESSION_GEAR_ITEMS.get(member['session'], [])
-                st.caption(f"현재 등록된 세션({member['session']}) 전용 장비 목록입니다.")
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["🎸 연습 세션실 & 무대", "🛍️ 확장 상점 & 인벤토리", "✏️ 내 한줄소개 설정"])
 
-            for item in items_to_show:
-                is_owned = item['id'] in user_inventory
-                col_item1, col_item2, col_item3 = st.columns([3, 2, 1])
-                with col_item1:
-                    status_str = "✅ [보유 중]" if is_owned else f"💰 {item['cost']} C"
-                    st.markdown(f"**{item['name']}** ({status_str})\n> {item['desc']}")
-                with col_item2:
-                    req_stat = 0
-                    if item['cost'] == 3000: req_stat = 1
-                    elif item['cost'] == 5000: req_stat = 3
-                    elif item['cost'] >= 10000: req_stat = 5
-                    if req_stat > 0:
-                        st.caption(f"필요 합주 능력치: ⚡ {req_stat}개")
-                with col_item3:
-                    if not is_owned:
-                        if st.button("구매", key=f"buy_{item['id']}", use_container_width=True):
-                            success, msg = purchase_item_db(member['id'], items_to_show, item['id'], item['cost'])
-                            if success:
-                                st.success(msg)
-                                st.rerun()
+        inventory_str = member['inventory'] or ""
+        my_items = [i.strip() for i in inventory_str.split(",") if i.strip()]
+        user_practice_time = member['practice_minutes']
+        user_title = get_title_by_practice_time(user_practice_time)
+
+        # 활성 합주 체크
+        active_ens = get_active_ensemble()
+
+        with sub_tab1:
+            st.subheader("무대 위 캐릭터 공연 애니메이션 & 타이머")
+
+            # 활성 합주가 진행 중인 경우, 해당 팀 멤버들 전원을 무대에 렌더링
+            render_members = []
+            if active_ens and active_ens['is_active'] == 1:
+                ens_m_ids = [int(x.strip()) for x in active_ens['member_ids'].split(",") if x.strip()]
+                for mid in ens_m_ids:
+                    mobj = get_member_fresh(mid)
+                    if mobj:
+                        render_members.append({
+                            "name": mobj['name'],
+                            "session": mobj['session'],
+                            "inventory": [i.strip() for i in (mobj['inventory'] or "").split(",") if i.strip()]
+                        })
+            else:
+                render_members.append({
+                    "name": member['name'],
+                    "session": member['session'],
+                    "inventory": my_items
+                })
+
+            equipped_display = []
+            total_credits = 0
+
+            for mi in my_items:
+                match_obj = next((item for item in all_possible_shop_items if item['id'] == mi), None)
+                if match_obj:
+                    equipped_display.append(match_obj['name'])
+                    item_cost = match_obj.get('cost', 1000)
+                    total_credits += item_cost
+
+            gear_text = " | ".join(equipped_display) if equipped_display else "기본 장비 착용 중"
+            audience_count = max(3, min(120, 3 + (total_credits // 200)))
+
+            # 타이머 상태 계산
+            is_ensemble_mode = (active_ens and active_ens['is_active'] == 1)
+            is_anim_playing = st.session_state['is_practicing'] or is_ensemble_mode
+
+            if is_ensemble_mode:
+                ens_elapsed = int(time.time() - active_ens['start_time'])
+                mins = ens_elapsed // 60
+                secs = ens_elapsed % 60
+                timer_html_status = f"🎷 [팀 합주 진행 중] '{active_ens['name']}': {mins:02d}분 {secs:02d}초 (30분당 능력치 1개 적립)"
+            elif st.session_state['is_practicing'] and st.session_state['practice_start_time']:
+                current_elapsed_seconds = int(time.time() - st.session_state['practice_start_time'])
+                mins = current_elapsed_seconds // 60
+                secs = current_elapsed_seconds % 60
+                timer_html_status = f"⏱️ [개인 연습 진행 중]: {mins:02d}분 {secs:02d}초"
+            else:
+                timer_html_status = "[타이머 대기 중 - 연습 시작 또는 합주 탭에서 합주를 시작하세요]"
+
+            st.write(f"**칭호:** {user_title} | **본래 세션:** {member['session']} | **누적 연습 시간:** {user_practice_time}분 | **⚡ 합주 능력치:** {member.get('ensemble_stats', 0)}개")
+            st.write(f"**착용 장비:** {gear_text} | **장비 총 가치:** {total_credits:,} C | **관중 수:** {audience_count}명")
+
+            # JavaScript에 넘길 부원 정보 JSON 구조 생성
+            members_json = json.dumps(render_members, ensure_ascii=False)
+            is_playing_str = "true" if is_anim_playing else "false"
+
+            stage_html = f"""
+            <div style="text-align: center; background-color: #0d0d15; padding: 12px; border-radius: 10px; font-family: sans-serif;">
+                <div style="color: #00FF66; font-weight: bold; font-size: 15px; margin-bottom: 8px;">{timer_html_status}</div>
+                <canvas id="stageCanvas" width="620" height="260" style="border:2px solid #2a2a3d; image-rendering: pixelated; border-radius: 8px;"></canvas>
+            </div>
+
+            <script>
+            const canvas = document.getElementById('stageCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            const isPlaying = {is_playing_str};
+            const audienceCount = {audience_count};
+            const bandMembers = {members_json};
+
+            let frame = 0;
+
+            const crowd = [];
+            for (let i = 0; i < audienceCount; i++) {{
+                crowd.push({{
+                    x: Math.random() * (canvas.width - 20) + 10,
+                    y: canvas.height - 18 + Math.random() * 10,
+                    height: 12 + Math.random() * 6,
+                    color: ['#4A5568', '#718096', '#A0AEC0', '#ED8936', '#9F7AEA', '#48BB78'][Math.floor(Math.random() * 6)],
+                    offset: Math.random() * Math.PI * 2
+                }});
+            }}
+
+            function render() {{
+                ctx.fillStyle = '#0a0a16';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                if (isPlaying) {{
+                    const hue1 = (frame * 2) % 360;
+                    const hue2 = (frame * 2 + 120) % 360;
+                    
+                    ctx.fillStyle = `hsla(${{hue1}}, 80%, 50%, 0.12)`;
+                    ctx.beginPath();
+                    ctx.moveTo(80, 0); ctx.lineTo(0, canvas.height - 60); ctx.lineTo(220, canvas.height - 60);
+                    ctx.fill();
+
+                    ctx.fillStyle = `hsla(${{hue2}}, 80%, 50%, 0.12)`;
+                    ctx.beginPath();
+                    ctx.moveTo(canvas.width - 80, 0); ctx.lineTo(canvas.width - 220, canvas.height - 60); ctx.lineTo(canvas.width, canvas.height - 60);
+                    ctx.fill();
+                }}
+
+                ctx.fillStyle = '#161625';
+                ctx.fillRect(0, canvas.height - 70, canvas.width, 40);
+                ctx.fillStyle = '#FF2222';
+                ctx.fillRect(0, canvas.height - 70, canvas.width, 2);
+
+                drawAmplifiers();
+
+                const numMembers = bandMembers.length;
+                const spacing = canvas.width / (numMembers + 1);
+
+                bandMembers.forEach((m, idx) => {{
+                    const cx = spacing * (idx + 1);
+                    drawPixelCharacter(cx, m);
+                }});
+
+                drawAudience();
+
+                frame++;
+                requestAnimationFrame(render);
+            }}
+
+            function drawAmplifiers() {{
+                ctx.fillStyle = '#1f1f2e';
+                ctx.fillRect(20, canvas.height - 120, 28, 50);
+                ctx.fillRect(canvas.width - 48, canvas.height - 120, 28, 50);
+                
+                ctx.fillStyle = '#3a3a52';
+                ctx.beginPath();
+                ctx.arc(34, canvas.height - 105, 5, 0, Math.PI * 2);
+                ctx.arc(34, canvas.height - 85, 5, 0, Math.PI * 2);
+                ctx.arc(canvas.width - 34, canvas.height - 105, 5, 0, Math.PI * 2);
+                ctx.arc(canvas.width - 34, canvas.height - 85, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }}
+
+            function drawPixelCharacter(cx, mData) {{
+                let cy = canvas.height - 110;
+                const bounce = isPlaying ? Math.sin(frame * 0.2 + cx) * 3 : 0;
+                cy += bounce;
+
+                // 머리
+                ctx.fillStyle = '#ffe0bd';
+                ctx.fillRect(cx - 8, cy - 24, 16, 16);
+
+                // 눈
+                ctx.fillStyle = '#111';
+                ctx.fillRect(cx - 5, cy - 18, 3, 3);
+                ctx.fillRect(cx + 2, cy - 18, 3, 3);
+
+                // 머리카락
+                ctx.fillStyle = '#3a2e2b';
+                ctx.fillRect(cx - 9, cy - 27, 18, 6);
+
+                // 이름 표시
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(mData.name, cx, cy - 32);
+
+                // 상의 & 하의
+                ctx.fillStyle = '#0f3460';
+                ctx.fillRect(cx - 7, cy - 8, 14, 16);
+                ctx.fillStyle = '#16213e';
+                ctx.fillRect(cx - 6, cy + 8, 5, 12);
+                ctx.fillRect(cx + 1, cy + 8, 5, 12);
+
+                drawInstrument(cx, cy, mData.session);
+            }}
+
+            function drawInstrument(cx, cy, sessionType) {{
+                ctx.save();
+                if (sessionType === "기타" || sessionType === "베이스") {{
+                    ctx.fillStyle = sessionType === "기타" ? '#FF2222' : '#00fff5';
+                    ctx.fillRect(cx - 12, cy - 2, 10, 8);
+                    ctx.fillStyle = '#8d5524';
+                    ctx.fillRect(cx - 3, cy - 0, 18, 3);
+                }} else if (sessionType === "드럼") {{
+                    ctx.fillStyle = '#f5abc9';
+                    ctx.beginPath();
+                    ctx.arc(cx, cy + 8, 10, 0, Math.PI * 2);
+                    ctx.fill();
+                }} else if (sessionType === "키보드") {{
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(cx - 14, cy + 2, 28, 6);
+                }} else if (sessionType === "보컬") {{
+                    ctx.fillStyle = '#aaaaaa';
+                    ctx.fillRect(cx + 6, cy - 12, 2, 20);
+                    ctx.fillStyle = '#FF2222';
+                    ctx.fillRect(cx + 4, cy - 16, 6, 6);
+                }}
+                ctx.restore();
+            }}
+
+            function drawAudience() {{
+                crowd.forEach((p) => {{
+                    const jump = isPlaying ? Math.abs(Math.sin(frame * 0.25 + p.offset)) * 7 : 0;
+                    const drawY = p.y - jump;
+
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, drawY, 8, p.height);
+                    ctx.fillRect(p.x + 1, drawY - 6, 6, 6);
+                }});
+            }}
+
+            render();
+            </script>
+            """
+
+            components.html(stage_html, height=310)
+
+            col_t_btn1, col_t_btn2 = st.columns(2)
+            with col_t_btn1:
+                if not st.session_state['is_practicing']:
+                    if st.button("🔴 개인 연습 시작", use_container_width=True, type="primary"):
+                        st.session_state['is_practicing'] = True
+                        st.session_state['practice_start_time'] = time.time()
+                        st.rerun()
+                else:
+                    st.button("🔴 연습 진행 중...", disabled=True, use_container_width=True)
+
+            with col_t_btn2:
+                if st.session_state['is_practicing']:
+                    if st.button("⏹️ 연습 종료 및 크레딧 정산", use_container_width=True, type="primary"):
+                        elapsed_seconds = time.time() - st.session_state['practice_start_time']
+                        elapsed_minutes = int(elapsed_seconds // 60)
+                        if elapsed_minutes < 1:
+                            st.warning("⚠️ 1분 이상 연습해야 크레딧이 적립됩니다.")
+                            st.session_state['is_practicing'] = False
+                            st.session_state['practice_start_time'] = None
+                        else:
+                            earned = elapsed_minutes * 30
+                            add_practice_time_and_credits(member['id'], elapsed_minutes, earned)
+                            st.success(f"🎉 연습 종료! {elapsed_minutes}분 동안 연습하여 **{earned} 크레딧**을 획득했습니다!")
+                            st.session_state['is_practicing'] = False
+                            st.session_state['practice_start_time'] = None
+                        st.rerun()
+                else:
+                    st.button("⏹️ 정지됨", disabled=True, use_container_width=True)
+
+            if st.session_state['is_practicing'] or is_ensemble_mode:
+                time.sleep(1)
+                st.rerun()
+
+        with sub_tab2:
+            st.subheader("🛍️ 밴드 장비 및 패션 상점")
+            st.markdown(f"보유 크레딧: **{member['credits']} C** | 보유 합주 능력치: **⚡ {member.get('ensemble_stats', 0)}개**")
+            st.info("💡 **상점 구매 조건:** 아이템 구매 시 해당 단계의 크레딧과 합주 능력치가 함께 소모됩니다.\n(3,000 C = 능력치 1개 소모 | 5,000 C = 3개 소모 | 10,000 C = 5개 소모)")
+            
+            shop_tabs = st.tabs(["🧢 모자", "옷", "👟 신발", "💍 장신구", "🎗️ MD", "🎸 세션별 악기 장비"])
+            categories = ["모자", "옷", "신발", "장신구", "MD"]
+
+            for idx, cat_name in enumerate(categories):
+                with shop_tabs[idx]:
+                    st.markdown(f"### 🛒 {cat_name} 컬렉션")
+                    c_items = COMMON_SHOP_ITEMS[cat_name]
+                    scols = st.columns(2)
+                    for i, item in enumerate(c_items):
+                        with scols[i % 2]:
+                            is_owned = item['id'] in my_items
+                            can_buy = True
+                            if i > 0 and c_items[i - 1]['id'] not in my_items:
+                                can_buy = False
+
+                            req_stat = 0
+                            if item['cost'] == 3000: req_stat = 1
+                            elif item['cost'] == 5000: req_stat = 3
+                            elif item['cost'] >= 10000: req_stat = 5
+
+                            req_text = f" + ⚡ 능력치 {req_stat}개" if req_stat > 0 else ""
+
+                            st.markdown(f"""
+                                <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
+                                    <h4>{item['name']}</h4>
+                                    <p style="color: #ccc; font-size: 13px; margin: 5px 0;">{item['desc']}</p>
+                                    <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">소모 재화: {item['cost']} C{req_text}</p>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            
+                            if is_owned:
+                                st.button("보유 중 ✅", key=f"owned_{item['id']}", disabled=True, use_container_width=True)
+                            elif not can_buy:
+                                st.button("잠김 🔒 (이전 단계 필요)", key=f"lock_{item['id']}", disabled=True, use_container_width=True)
                             else:
-                                st.error(msg)
-                    else:
-                        st.button("장착중", key=f"owned_{item['id']}", disabled=True, use_container_width=True)
-                st.markdown("---")
+                                if st.button("구매하기 💳", key=f"buy_{item['id']}", use_container_width=True):
+                                    success, msg = purchase_item_db(member['id'], c_items, item['id'], item['cost'])
+                                    if success:
+                                        st.success(msg)
+                                        st.rerun()
+                                    else:
+                                        st.error(msg)
+
+            with shop_tabs[5]:
+                st.markdown("### 🎸 세션별 악기 및 장비 상점")
+                selected_gear_session = st.selectbox("조회할 악기 세션 선택", ["기타", "베이스", "보컬", "드럼", "키보드"])
+                target_gear_list = SESSION_GEAR_ITEMS[selected_gear_session]
+                
+                g_cols = st.columns(2)
+                for i, item in enumerate(target_gear_list):
+                    with g_cols[i % 2]:
+                        is_owned = item['id'] in my_items
+                        can_buy = True
+                        if i > 0 and target_gear_list[i - 1]['id'] not in my_items:
+                            can_buy = False
+
+                        req_stat = 0
+                        if item['cost'] == 3000: req_stat = 1
+                        elif item['cost'] == 5000: req_stat = 3
+                        elif item['cost'] >= 10000: req_stat = 5
+
+                        req_text = f" + ⚡ 능력치 {req_stat}개" if req_stat > 0 else ""
+
+                        st.markdown(f"""
+                            <div style="background: #151515; padding: 15px; border-radius: 8px; border: 1px solid #333; margin-bottom: 10px;">
+                                <h4>{item['name']}</h4>
+                                <p style="color: #ccc; font-size: 13px; margin: 5px 0;">{item['desc']}</p>
+                                <p style="color: #FF2222; font-weight: bold; margin: 5px 0;">소모 재화: {item['cost']} C{req_text}</p>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        
+                        if is_owned:
+                            st.button("보유 중 ✅", key=f"owned_{item['id']}", disabled=True, use_container_width=True)
+                        elif not can_buy:
+                            st.button("잠김 🔒 (이전 단계 필요)", key=f"lock_{item['id']}", disabled=True, use_container_width=True)
+                        else:
+                            if st.button("구매하기 💳", key=f"buy_{item['id']}", use_container_width=True):
+                                success, msg = purchase_item_db(member['id'], target_gear_list, item['id'], item['cost'])
+                                if success:
+                                    st.success(msg)
+                                    st.rerun()
+                                else:
+                                    st.error(msg)
+
+            st.markdown("---")
+            st.subheader("🎒 내 장비 인벤토리")
+            if my_items:
+                for mi in my_items:
+                    match_item = next((item for item in all_possible_shop_items if item['id'] == mi), None)
+                    if match_item:
+                        st.markdown(f"- ✅ **{match_item['name']}**")
+            else:
+                st.info("보유한 아이템이 없습니다.")
+
+        with sub_tab3:
+            st.subheader("✏️ 한줄소개 수정")
+            with st.form("bio_form"):
+                new_bio_input = st.text_input("한줄소개 입력", value=member.get('bio', ''))
+                bio_submit = st.form_submit_button("저장하기", use_container_width=True)
+                if bio_submit:
+                    update_member_bio(member['id'], new_bio_input)
+                    st.success("업데이트되었습니다!")
+                    st.rerun()
+
 
     elif selected_main_tab == "🎷 합주":
         st.title("🎷 HERTZ 팀 합주실")
