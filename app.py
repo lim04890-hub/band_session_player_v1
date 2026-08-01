@@ -786,6 +786,44 @@ def handle_logout_or_stop():
     st.session_state['is_practicing'] = False
     st.session_state['practice_start_time'] = None
 
+# 전역 학과 딕셔너리 (초기값 설정, 99번을 '기타'로 고정)
+department_dict = {
+    1: "컴퓨터공학과",
+    2: "전자공학과",
+    99: "기타"
+}
+# 새로운 학과 멤버 등록
+def register_department():
+    print("=== 학과 선택 ===")
+    for key, value in department_dict.items():
+        print(f"{key}. {value}")
+    
+    choice = int(input("학과 번호를 선택하세요: "))
+    
+    # '기타' 옵션을 선택한 경우
+    if choice == 99:
+        new_dept = input("새로운 학과 이름을 입력하세요: ")
+        
+        # 기존 학과 키 목록에서 99('기타')를 제외한 후 가장 큰 키값 검색
+        existing_keys = [k for k in department_dict.keys() if k != 99]
+        new_key = max(existing_keys) + 1 if existing_keys else 1
+        
+        # 딕셔너리에 새 학과 자동 등록
+        department_dict[new_key] = new_dept
+        
+        return new_dept
+        
+    elif choice in department_dict:
+        return department_dict[choice]
+    else:
+        print("잘못된 번호입니다.")
+        return None
+
+# 실행 예시
+selected_dept = register_department()
+print(f"\n[진행 결과] 선택된 학과: {selected_dept}")
+print(f"[진행 결과] 업데이트된 딕셔너리: {department_dict}")
+
 # --- 알림 팝업(Dialog) 관리 ---
 @st.dialog("🎉 개인 연습 정산 완료")
 def practice_result_dialog(elapsed_minutes, earned):
