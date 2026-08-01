@@ -676,6 +676,27 @@ def separate_audio(file_path, filename):
         
     return target_dir
 
+def get_active_ensembles():
+    """현재 활성화된(is_active == 1) 모든 합주 목록을 반환합니다."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ensembles WHERE is_active = 1")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    # SQLite 결과 딕셔너리 변환 형태에 맞추어 작성 (프로젝트 코드 스타일에 따름)
+    active_list = []
+    for row in rows:
+        active_list.append({
+            'id': row['id'],
+            'name': row['name'],
+            'team_name': row['team_name'],
+            'member_ids': row['member_ids'],
+            'is_active': row['is_active'],
+            'start_time': row.get('start_time', 0) # start_time 컬럼이 없는 경우 예외 처리
+        })
+    return active_list
+
 def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
     if not selected_stems or not separated_dir or not os.path.exists(separated_dir):
         return None
