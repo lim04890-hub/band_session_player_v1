@@ -3,7 +3,9 @@ import subprocess
 import os
 import shutil
 import sys
-import sqlite3
+import psycopg2
+from psycopg2.extras
+import RealDictCursor
 import uuid
 import time
 import json
@@ -230,19 +232,17 @@ def get_title_by_practice_time(minutes):
 # --- 데이터베이스 설정 ---
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_FILE, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")
+    conn = psycopg2.connect(st.secrets["DB_URL"])
     return conn
 
 def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS members (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
                 department TEXT NOT NULL,
                 student_id TEXT NOT NULL,
@@ -256,48 +256,36 @@ def init_db():
                 ensemble_stats INTEGER DEFAULT 0
             )
         ''')
-        
-        cursor.execute("PRAGMA table_info(members)")
-        columns = [col[1] for col in cursor.fetchall()]
-        if 'credits' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN credits INTEGER DEFAULT 0")
-        if 'inventory' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN inventory TEXT DEFAULT ''")
-        if 'practice_minutes' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN practice_minutes INTEGER DEFAULT 0")
-        if 'is_active' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN is_active INTEGER DEFAULT 1")
-        if 'bio' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN bio TEXT DEFAULT '안녕하세요! 열심히 하겠습니다!'")
-        if 'ensemble_stats' not in columns: cursor.execute("ALTER TABLE members ADD COLUMN ensemble_stats INTEGER DEFAULT 0")
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS saved_teams (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 team_name TEXT NOT NULL UNIQUE,
                 created_at TEXT NOT NULL
             )
         ''')
-        
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS saved_team_members (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                team_id INTEGER NOT NULL,
-                member_id INTEGER NOT NULL,
-                FOREIGN KEY (team_id) REFERENCES saved_teams (id) ON DELETE CASCADE,
-                FOREIGN KEY (member_id) REFERENCES members (id) ON DELETE CASCADE
+                id SERIAL PRIMARY KEY,
+                team_id INTEGER NOT NULL REFERENCES saved_teams(id) ON DELETE CASCADE,
+                member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE
             )
         ''')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS projects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                member_id INTEGER NOT NULL,
+                id SERIAL PRIMARY KEY,
+                member_id INTEGER NOT NULL REFERENCES members(id),
                 song_title TEXT NOT NULL,
                 separated_dir TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (member_id) REFERENCES members (id)
+                created_at TEXT NOT NULL
             )
         ''')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS performances (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
@@ -305,17 +293,15 @@ def init_db():
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS performance_teams_map (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                performance_id INTEGER NOT NULL,
-                team_id INTEGER NOT NULL,
-                FOREIGN KEY (performance_id) REFERENCES performances (id) ON DELETE CASCADE,
-                FOREIGN KEY (team_id) REFERENCES saved_teams (id) ON DELETE CASCADE
+                id SERIAL PRIMARY KEY,
+                performance_id INTEGER NOT NULL REFERENCES performances(id) ON DELETE CASCADE,
+                team_id INTEGER NOT NULL REFERENCES saved_teams(id) ON DELETE CASCADE
             )
         ''')
 
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS ensembles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
                 team_name TEXT NOT NULL,
                 member_ids TEXT NOT NULL,
@@ -324,14 +310,20 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         ''')
-        
+
         cursor.execute("SELECT COUNT(*) FROM members")
         if cursor.fetchone()[0] == 0:
             for item in INITIAL_MEMBERS:
                 cursor.execute('''
                     INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio, ensemble_stats)
-                    VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! 열심히 하겠습니다!', 0)
+                    VALUES (%s, %s, %s, %s, %s, 0, '', 0, 1, '안녕하세요! 열심히 하겠습니다!', 0)
                 ''', item)
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        st.error(f"데이터베이스 초기화 오류: {e}")
             
         conn.commit()
         conn.close()
@@ -345,7 +337,7 @@ def verify_member(name, department, student_id, session):
     cursor = conn.cursor()
     cursor.execute('''
         SELECT * FROM members 
-        WHERE name = ? AND department = ? AND student_id = ? AND session = ? AND is_active = 1
+        WHERE name = %s AND department = %s AND student_id = %s AND session = %s AND is_active = 1
     ''', (name.strip(), department.strip(), str(student_id).strip(), session))
     member = cursor.fetchone()
     conn.close()
@@ -354,7 +346,7 @@ def verify_member(name, department, student_id, session):
 def get_member_fresh(member_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM members WHERE id = ?", (member_id,))
+    cursor.execute("SELECT * FROM members WHERE id = %s", (member_id,))
     member = cursor.fetchone()
     conn.close()
     return dict(member) if member else None
@@ -381,7 +373,7 @@ def add_member(name, department, student_id, session, is_admin):
     try:
         cursor.execute('''
             INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio, ensemble_stats)
-            VALUES (?, ?, ?, ?, ?, 0, '', 0, 1, '안녕하세요! 열심히 하겠습니다!', 0)
+            VALUES (%s, %s, %s, %s, %s, 0, '', 0, 1, '안녕하세요! 열심히 하겠습니다!', 0)
         ''', (name.strip(), department.strip(), str(student_id).strip(), session, 1 if is_admin else 0))
         conn.commit()
         return True, "부원이 성공적으로 추가되었습니다."
@@ -393,35 +385,35 @@ def add_member(name, department, student_id, session, is_admin):
 def update_member_admin(member_id, is_admin):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE members SET is_admin = ? WHERE id = ?", (1 if is_admin else 0, member_id))
+    cursor.execute("UPDATE members SET is_admin = %s WHERE id = %s", (1 if is_admin else 0, member_id))
     conn.commit()
     conn.close()
 
 def set_member_active_status(member_id, is_active):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE members SET is_active = ? WHERE id = ?", (1 if is_active else 0, member_id))
+    cursor.execute("UPDATE members SET is_active = %s WHERE id = %s", (1 if is_active else 0, member_id))
     conn.commit()
     conn.close()
 
 def update_member_bio(member_id, bio):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE members SET bio = ? WHERE id = ?", (bio.strip(), member_id))
+    cursor.execute("UPDATE members SET bio = %s WHERE id = %s", (bio.strip(), member_id))
     conn.commit()
     conn.close()
 
 def add_practice_time_and_credits(member_id, minutes, credits):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE members SET practice_minutes = practice_minutes + ?, credits = credits + ? WHERE id = ?", (minutes, credits, member_id))
+    cursor.execute("UPDATE members SET practice_minutes = practice_minutes + %s, credits = credits + %s WHERE id = %s", (minutes, credits, member_id))
     conn.commit()
     conn.close()
 
 def purchase_item_db(member_id, category_items, target_item_id, cost):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT credits, inventory, ensemble_stats FROM members WHERE id = ?", (member_id,))
+    cursor.execute("SELECT credits, inventory, ensemble_stats FROM members WHERE id = %s", (member_id,))
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -469,7 +461,7 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
     new_credits = current_credits - cost
     new_ensemble_stats = current_ensemble_stats - req_ensemble_stat
     
-    cursor.execute("UPDATE members SET credits = ?, inventory = ?, ensemble_stats = ? WHERE id = ?", 
+    cursor.execute("UPDATE members SET credits = %s, inventory = %s, ensemble_stats = %s WHERE id = %s", 
                    (new_credits, new_inventory, new_ensemble_stats, member_id))
     conn.commit()
     conn.close()
@@ -482,7 +474,7 @@ def save_project(member_id, song_title, separated_dir):
     cursor = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
-        "INSERT INTO projects (member_id, song_title, separated_dir, created_at) VALUES (?, ?, ?, ?)",
+        "INSERT INTO projects (member_id, song_title, separated_dir, created_at) VALUES (%s, %s, %s, %s)",
         (member_id, song_title, separated_dir, now)
     )
     project_id = cursor.lastrowid
@@ -493,7 +485,7 @@ def save_project(member_id, song_title, separated_dir):
 def get_member_projects(member_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM projects WHERE member_id = ? ORDER BY id DESC", (member_id,))
+    cursor.execute("SELECT * FROM projects WHERE member_id = %s ORDER BY id DESC", (member_id,))
     projects = cursor.fetchall()
     conn.close()
     return [dict(p) for p in projects]
@@ -501,12 +493,12 @@ def get_member_projects(member_id):
 def delete_project(project_id, member_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT separated_dir FROM projects WHERE id = ? AND member_id = ?", (project_id, member_id))
+    cursor.execute("SELECT separated_dir FROM projects WHERE id = %s AND member_id = %s", (project_id, member_id))
     row = cursor.fetchone()
     if row and row['separated_dir'] and os.path.exists(row['separated_dir']):
         shutil.rmtree(row['separated_dir'], ignore_errors=True)
         
-    cursor.execute("DELETE FROM projects WHERE id = ? AND member_id = ?", (project_id, member_id))
+    cursor.execute("DELETE FROM projects WHERE id = %s AND member_id = %s", (project_id, member_id))
     conn.commit()
     conn.close()
 
@@ -517,10 +509,10 @@ def save_custom_team(team_name, member_ids):
     cursor = conn.cursor()
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("INSERT INTO saved_teams (team_name, created_at) VALUES (?, ?)", (team_name.strip(), now))
+        cursor.execute("INSERT INTO saved_teams (team_name, created_at) VALUES (%s, %s)", (team_name.strip(), now))
         team_id = cursor.lastrowid
         for m_id in member_ids:
-            cursor.execute("INSERT INTO saved_team_members (team_id, member_id) VALUES (?, ?)", (team_id, m_id))
+            cursor.execute("INSERT INTO saved_team_members (team_id, member_id) VALUES (%s, %s)", (team_id, m_id))
         conn.commit()
         return True, "팀이 성공적으로 저장되었습니다."
     except sqlite3.IntegrityError:
@@ -542,7 +534,7 @@ def get_all_saved_teams():
             SELECT m.id, m.name, m.department, m.session 
             FROM saved_team_members stm
             JOIN members m ON stm.member_id = m.id
-            WHERE stm.team_id = ?
+            WHERE stm.team_id = %s
         ''', (t['id'],))
         members = cursor.fetchall()
         
@@ -561,7 +553,7 @@ def get_all_saved_teams():
 def delete_saved_team(team_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM saved_teams WHERE id = ?", (team_id,))
+    cursor.execute("DELETE FROM saved_teams WHERE id = %s", (team_id,))
     conn.commit()
     conn.close()
 
@@ -579,7 +571,7 @@ def create_performance(title):
     conn = get_db_connection()
     cursor = conn.cursor()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("INSERT INTO performances (title, created_at) VALUES (?, ?)", (title, now))
+    cursor.execute("INSERT INTO performances (title, created_at) VALUES (%s, %s)", (title, now))
     perf_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -588,7 +580,7 @@ def create_performance(title):
 def delete_performance(perf_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM performances WHERE id = ?", (perf_id,))
+    cursor.execute("DELETE FROM performances WHERE id = %s", (perf_id,))
     conn.commit()
     conn.close()
 
@@ -599,7 +591,7 @@ def get_performance_teams_new(perf_id):
         SELECT st.id, st.team_name 
         FROM performance_teams_map ptm
         JOIN saved_teams st ON ptm.team_id = st.id
-        WHERE ptm.performance_id = ?
+        WHERE ptm.performance_id = %s
     ''', (perf_id,))
     teams = cursor.fetchall()
     
@@ -610,7 +602,7 @@ def get_performance_teams_new(perf_id):
             SELECT m.id, m.name, m.department, m.session 
             FROM saved_team_members stm
             JOIN members m ON stm.member_id = m.id
-            WHERE stm.team_id = ?
+            WHERE stm.team_id = %s
         ''', (t['id'],))
         members = cursor.fetchall()
         sorted_members = sorted([dict(m) for m in members], key=lambda x: (session_order.get(x['session'], 6), x['name']))
@@ -626,9 +618,9 @@ def get_performance_teams_new(perf_id):
 def set_performance_teams(perf_id, team_ids):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM performance_teams_map WHERE performance_id = ?", (perf_id,))
+    cursor.execute("DELETE FROM performance_teams_map WHERE performance_id = %s", (perf_id,))
     for tid in team_ids:
-        cursor.execute("INSERT INTO performance_teams_map (performance_id, team_id) VALUES (?, ?)", (perf_id, tid))
+        cursor.execute("INSERT INTO performance_teams_map (performance_id, team_id) VALUES (%s, %s)", (perf_id, tid))
     conn.commit()
     conn.close()
 
@@ -641,7 +633,7 @@ def create_ensemble(name, team_name, member_ids):
     member_ids_str = ",".join(map(str, member_ids))
     cursor.execute('''
         INSERT INTO ensembles (name, team_name, member_ids, is_active, start_time, created_at)
-        VALUES (?, ?, ?, 0, 0, ?)
+        VALUES (%s, %s, %s, 0, 0, %s)
     ''', (name, team_name, member_ids_str, now))
     conn.commit()
     conn.close()
@@ -657,7 +649,7 @@ def get_all_ensembles():
 def delete_ensemble_db(ensemble_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM ensembles WHERE id = ?", (ensemble_id,))
+    cursor.execute("DELETE FROM ensembles WHERE id = %s", (ensemble_id,))
     conn.commit()
     conn.close()
 
@@ -665,14 +657,14 @@ def start_ensemble_db(ensemble_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     now_ts = time.time()
-    cursor.execute("UPDATE ensembles SET is_active = 1, start_time = ? WHERE id = ?", (now_ts, ensemble_id))
+    cursor.execute("UPDATE ensembles SET is_active = 1, start_time = %s WHERE id = %s", (now_ts, ensemble_id))
     conn.commit()
     conn.close()
 
 def stop_ensemble_db(ensemble_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM ensembles WHERE id = ?", (ensemble_id,))
+    cursor.execute("SELECT * FROM ensembles WHERE id = %s", (ensemble_id,))
     ens = cursor.fetchone()
     
     if ens and ens['is_active'] == 1:
@@ -684,9 +676,9 @@ def stop_ensemble_db(ensemble_id):
         
         if stats_earned > 0 and member_ids:
             for m_id in member_ids:
-                cursor.execute("UPDATE members SET ensemble_stats = ensemble_stats + ? WHERE id = ?", (stats_earned, m_id))
+                cursor.execute("UPDATE members SET ensemble_stats = ensemble_stats + %s WHERE id = %s", (stats_earned, m_id))
                 
-        cursor.execute("UPDATE ensembles SET is_active = 0, start_time = 0 WHERE id = ?", (ensemble_id,))
+        cursor.execute("UPDATE ensembles SET is_active = 0, start_time = 0 WHERE id = %s", (ensemble_id,))
         conn.commit()
         conn.close()
         return stats_earned, len(member_ids)
