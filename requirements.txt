@@ -2,4 +2,5 @@ streamlit
 demucs
 torch --extra-index-url https://download.pytorch.org/whl/cpu
 imageio-ffmpeg
-
+streamlit
+psycopg2-binary
