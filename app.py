@@ -1700,7 +1700,7 @@ else:
                             cursor.execute(
                                 """
                                 INSERT INTO members (name, student_id, department, session, is_admin) 
-                                VALUES (?, ?, ?, ?, ?)
+                                VALUES (%s, %s, %s, %s, %s)
                                 """,
                                 (new_name, new_sid, final_dept, new_sess, 1 if new_is_admin else 0)
                             )
