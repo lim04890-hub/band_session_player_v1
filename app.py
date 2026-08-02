@@ -327,6 +327,9 @@ def init_db():
         if conn is not None:
             conn.close()
 
+@st.cache_resource
+def run_init_db_once():
+    init_db()
 # --- Members Handlers ---
 
 def verify_member(name, department, student_id, session):
