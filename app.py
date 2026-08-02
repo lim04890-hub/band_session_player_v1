@@ -331,18 +331,23 @@ def init_db():
 
 def verify_member(name, department, student_id, session):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    # 커서 생성 시 RealDictCursor를 반드시 지정해야 합니다.
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
     cursor.execute('''
         SELECT * FROM members 
         WHERE name = %s AND department = %s AND student_id = %s AND session = %s AND is_active = 1
     ''', (name.strip(), department.strip(), str(student_id).strip(), session))
+    
     member = cursor.fetchone()
+    cursor.close()
     conn.close()
+    
     return dict(member) if member else None
 
 def get_member_fresh(member_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM members WHERE id = %s", (member_id,))
     member = cursor.fetchone()
     conn.close()
@@ -350,7 +355,7 @@ def get_member_fresh(member_id):
 
 def get_all_active_members():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM members WHERE is_active = 1 ORDER BY name ASC")
     members = cursor.fetchall()
     conn.close()
@@ -358,7 +363,7 @@ def get_all_active_members():
 
 def get_all_members_including_inactive():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM members ORDER BY is_active DESC, name ASC")
     members = cursor.fetchall()
     conn.close()
@@ -366,7 +371,7 @@ def get_all_members_including_inactive():
 
 def add_member(name, department, student_id, session, is_admin):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cursor.execute('''
             INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio, ensemble_stats)
@@ -381,35 +386,35 @@ def add_member(name, department, student_id, session, is_admin):
 
 def update_member_admin(member_id, is_admin):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("UPDATE members SET is_admin = %s WHERE id = %s", (1 if is_admin else 0, member_id))
     conn.commit()
     conn.close()
 
 def set_member_active_status(member_id, is_active):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("UPDATE members SET is_active = %s WHERE id = %s", (1 if is_active else 0, member_id))
     conn.commit()
     conn.close()
 
 def update_member_bio(member_id, bio):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("UPDATE members SET bio = %s WHERE id = %s", (bio.strip(), member_id))
     conn.commit()
     conn.close()
 
 def add_practice_time_and_credits(member_id, minutes, credits):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("UPDATE members SET practice_minutes = practice_minutes + %s, credits = credits + %s WHERE id = %s", (minutes, credits, member_id))
     conn.commit()
     conn.close()
 
 def purchase_item_db(member_id, category_items, target_item_id, cost):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT credits, inventory, ensemble_stats FROM members WHERE id = %s", (member_id,))
     row = cursor.fetchone()
     if not row:
@@ -468,7 +473,7 @@ def purchase_item_db(member_id, category_items, target_item_id, cost):
 
 def save_project(member_id, song_title, separated_dir):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
         "INSERT INTO projects (member_id, song_title, separated_dir, created_at) VALUES (%s, %s, %s, %s)",
@@ -481,7 +486,7 @@ def save_project(member_id, song_title, separated_dir):
 
 def get_member_projects(member_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM projects WHERE member_id = %s ORDER BY id DESC", (member_id,))
     projects = cursor.fetchall()
     conn.close()
@@ -489,7 +494,7 @@ def get_member_projects(member_id):
 
 def delete_project(project_id, member_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT separated_dir FROM projects WHERE id = %s AND member_id = %s", (project_id, member_id))
     row = cursor.fetchone()
     if row and row['separated_dir'] and os.path.exists(row['separated_dir']):
@@ -503,7 +508,7 @@ def delete_project(project_id, member_id):
 
 def save_custom_team(team_name, member_ids):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("INSERT INTO saved_teams (team_name, created_at) VALUES (%s, %s)", (team_name.strip(), now))
@@ -521,7 +526,7 @@ def save_custom_team(team_name, member_ids):
 
 def get_all_saved_teams():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM saved_teams ORDER BY id DESC")
     teams = cursor.fetchall()
     
@@ -549,7 +554,7 @@ def get_all_saved_teams():
 
 def delete_saved_team(team_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("DELETE FROM saved_teams WHERE id = %s", (team_id,))
     conn.commit()
     conn.close()
@@ -558,7 +563,7 @@ def delete_saved_team(team_id):
 
 def get_all_performances():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM performances ORDER BY id DESC")
     rows = cursor.fetchall()
     conn.close()
@@ -566,7 +571,7 @@ def get_all_performances():
 
 def create_performance(title):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute("INSERT INTO performances (title, created_at) VALUES (%s, %s)", (title, now))
     perf_id = cursor.lastrowid
@@ -576,14 +581,14 @@ def create_performance(title):
 
 def delete_performance(perf_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("DELETE FROM performances WHERE id = %s", (perf_id,))
     conn.commit()
     conn.close()
 
 def get_performance_teams_new(perf_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('''
         SELECT st.id, st.team_name 
         FROM performance_teams_map ptm
@@ -614,7 +619,7 @@ def get_performance_teams_new(perf_id):
 
 def set_performance_teams(perf_id, team_ids):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("DELETE FROM performance_teams_map WHERE performance_id = %s", (perf_id,))
     for tid in team_ids:
         cursor.execute("INSERT INTO performance_teams_map (performance_id, team_id) VALUES (%s, %s)", (perf_id, tid))
@@ -625,7 +630,7 @@ def set_performance_teams(perf_id, team_ids):
 
 def create_ensemble(name, team_name, member_ids):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     member_ids_str = ",".join(map(str, member_ids))
     cursor.execute('''
@@ -637,7 +642,7 @@ def create_ensemble(name, team_name, member_ids):
 
 def get_all_ensembles():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM ensembles ORDER BY id DESC")
     rows = cursor.fetchall()
     conn.close()
@@ -645,14 +650,14 @@ def get_all_ensembles():
 
 def delete_ensemble_db(ensemble_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("DELETE FROM ensembles WHERE id = %s", (ensemble_id,))
     conn.commit()
     conn.close()
 
 def start_ensemble_db(ensemble_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     now_ts = time.time()
     cursor.execute("UPDATE ensembles SET is_active = 1, start_time = %s WHERE id = %s", (now_ts, ensemble_id))
     conn.commit()
@@ -660,7 +665,7 @@ def start_ensemble_db(ensemble_id):
 
 def stop_ensemble_db(ensemble_id):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM ensembles WHERE id = %s", (ensemble_id,))
     ens = cursor.fetchone()
     
@@ -686,7 +691,7 @@ def stop_ensemble_db(ensemble_id):
 def get_active_ensembles():
     """현재 활성화된(is_active == 1) 모든 합주 목록을 반환합니다."""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM ensembles WHERE is_active = 1")
     rows = cursor.fetchall()
     conn.close()
