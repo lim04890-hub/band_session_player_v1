@@ -726,7 +726,7 @@ def get_active_ensembles():
         })
     return active_list
 
-init_db()
+run_init_db_once()
 
 def separate_audio(file_path, filename):
     env = os.environ.copy()
