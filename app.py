@@ -235,10 +235,11 @@ def get_db_connection():
     return conn
 
 def init_db():
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS members (
                 id SERIAL PRIMARY KEY,
@@ -255,7 +256,7 @@ def init_db():
                 ensemble_stats INTEGER DEFAULT 0
             )
         ''')
-
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS saved_teams (
                 id SERIAL PRIMARY KEY,
@@ -263,7 +264,7 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         ''')
-
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS saved_team_members (
                 id SERIAL PRIMARY KEY,
@@ -309,7 +310,7 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         ''')
-
+        
         cursor.execute("SELECT COUNT(*) FROM members")
         if cursor.fetchone()[0] == 0:
             for item in INITIAL_MEMBERS:
@@ -317,17 +318,14 @@ def init_db():
                     INSERT INTO members (name, department, student_id, session, is_admin, credits, inventory, practice_minutes, is_active, bio, ensemble_stats)
                     VALUES (%s, %s, %s, %s, %s, 0, '', 0, 1, '안녕하세요! 열심히 하겠습니다!', 0)
                 ''', item)
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-    except Exception as e:
-        st.error(f"데이터베이스 초기화 오류: {e}")
             
         conn.commit()
-        conn.close()
+        cursor.close()
     except Exception as e:
         st.error(f"데이터베이스 초기화 오류: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
 
 # --- Members Handlers ---
 
