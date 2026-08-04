@@ -949,7 +949,7 @@ else:
         elif st.session_state['view'] == 'new_project':
             if st.button("⬅️ 목록으로 돌아가기"): st.session_state['view'] = 'dashboard'; st.rerun()
             st.title("➕ 새 합주곡 추가")
-            uploaded_file = st.file_uploader("오디오 파일 업로드", type=["mp3", "wav"])
+            uploaded_file = st.file_uploader("오디오 파일 업로드(100MB 이내의 mp3 파일만 올려주세요!!)", type=["mp3"])
             if uploaded_file and st.button("🚀 시작"):
                 file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
                 with open(file_path, "wb") as f: f.write(uploaded_file.getbuffer())
@@ -972,8 +972,8 @@ else:
             selected_stems = [stem for i, stem in enumerate(all_stems) if cols[i%3].checkbox(stem.capitalize(), value=(stem != "guitar"))]
             speed = st.slider("재생 속도", 0.5, 2.0, 1.0, 0.01)
             start_time, end_time = st.columns(2)
-            s_t = start_time.number_input("시작 초", 0, 0)
-            e_t = end_time.number_input("종료 초", 0, 0)
+            s_t = start_time.number_input("시작 초", min_value=0, max_value=300, value=0)
+            e_t = end_time.number_input("종료 초", min_value=0, max_value=300, value=0)
             
             if selected_stems:
                 with st.spinner("믹싱 중..."):
