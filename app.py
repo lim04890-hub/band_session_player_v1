@@ -949,7 +949,7 @@ else:
         elif st.session_state['view'] == 'new_project':
             if st.button("⬅️ 목록으로 돌아가기"): st.session_state['view'] = 'dashboard'; st.rerun()
             st.title("➕ 새 합주곡 추가")
-            uploaded_file = st.file_uploader("오디오 파일 업로드(7MB 이내의 mp3 파일만 올려주세요!!)", type=["mp3"], max_upload_size=200)
+            uploaded_file = st.file_uploader("오디오 파일 업로드(7MB 이내의 mp3 파일만 올려주세요!!)", type=["mp3"], max_upload_size=7)
             if uploaded_file and st.button("🚀 시작"):
                 file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
                 with open(file_path, "wb") as f: f.write(uploaded_file.getbuffer())
