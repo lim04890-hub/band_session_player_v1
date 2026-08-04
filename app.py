@@ -332,51 +332,56 @@ def run_init_db_once():
 
 def verify_member(name, department, student_id, session):
     conn = get_db_connection()
-    # 커서 생성 시 RealDictCursor를 반드시 지정해야 합니다.
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    cursor.execute('''
-        SELECT * FROM members 
-        WHERE name = %s AND department = %s AND student_id = %s AND session = %s AND is_active = 1
-    ''', (name.strip(), department.strip(), str(student_id).strip(), session))
-    
-    member = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute('''
+                SELECT * FROM members 
+                WHERE name = %s AND department = %s AND student_id = %s AND session = %s AND is_active = 1
+            ''', (name.strip(), department.strip(), str(student_id).strip(), session))
+            member = cursor.fetchone()
+            return dict(member) if member else None
+    finally:
+        conn.close()
     
     return dict(member) if member else None
 
 def get_member_fresh(member_id):
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT * FROM members WHERE id = %s", (member_id,))
-    member = cursor.fetchone()
-    conn.close()
-    return dict(member) if member else None
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM members WHERE id = %s", (member_id,))
+            member = cursor.fetchone()
+            return dict(member) if member else None
+    finally:
+        conn.close()
 
 def get_all_active_members():
     conn = get_db_connection()
-    if not conn: return []
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    # 애플리케이션에서 실제로 사용하는 컬럼만 명시 (예시)
-    cursor.execute("""
-        SELECT id, name, department, student_id, session, is_admin 
-        FROM members 
-        WHERE is_active = TRUE 
-        ORDER BY name ASC 
-        LIMIT 500
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    if not conn: 
+        return []
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT id, name, department, student_id, session, is_admin 
+                FROM members 
+                WHERE is_active = 1 
+                ORDER BY name ASC 
+                LIMIT 500
+            """)
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+    finally:
+        conn.close()
 
 def get_all_members_including_inactive():
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT * FROM members ORDER BY is_active DESC, name ASC")
-    members = cursor.fetchall()
-    conn.close()
-    return [dict(m) for m in members]
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM members ORDER BY is_active DESC, name ASC")
+            members = cursor.fetchall()
+            return [dict(m) for m in members]
+    finally:
+        conn.close()
 
 def add_member(name, department, student_id, session, is_admin):
     conn = get_db_connection()
@@ -495,11 +500,13 @@ def save_project(member_id, song_title, separated_dir):
 
 def get_member_projects(member_id):
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT * FROM projects WHERE member_id = %s ORDER BY id DESC", (member_id,))
-    projects = cursor.fetchall()
-    conn.close()
-    return [dict(p) for p in projects]
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM projects WHERE member_id = %s ORDER BY id DESC", (member_id,))
+            projects = cursor.fetchall()
+            return [dict(p) for p in projects]
+    finally:
+        conn.close()
 
 def delete_project(project_id, member_id):
     conn = get_db_connection()
@@ -535,31 +542,32 @@ def save_custom_team(team_name, member_ids):
 
 def get_all_saved_teams():
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT * FROM saved_teams ORDER BY id DESC")
-    teams = cursor.fetchall()
-    
-    result = []
-    for t in teams:
-        cursor.execute('''
-            SELECT m.id, m.name, m.department, m.session 
-            FROM saved_team_members stm
-            JOIN members m ON stm.member_id = m.id
-            WHERE stm.team_id = %s
-        ''', (t['id'],))
-        members = cursor.fetchall()
-        
-        session_order = {"보컬": 1, "기타": 2, "베이스": 3, "드럼": 4, "키보드": 5}
-        sorted_members = sorted([dict(m) for m in members], key=lambda x: (session_order.get(x['session'], 6), x['name']))
-        
-        result.append({
-            "id": t['id'],
-            "team_name": t['team_name'],
-            "created_at": t['created_at'],
-            "members": sorted_members
-        })
-    conn.close()
-    return result
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM saved_teams ORDER BY id DESC")
+            teams = cursor.fetchall()
+            
+            result = []
+            session_order = {"보컬": 1, "기타": 2, "베이스": 3, "드럼": 4, "키보드": 5}
+            for t in teams:
+                cursor.execute('''
+                    SELECT m.id, m.name, m.department, m.session 
+                    FROM saved_team_members stm
+                    JOIN members m ON stm.member_id = m.id
+                    WHERE stm.team_id = %s
+                ''', (t['id'],))
+                members = cursor.fetchall()
+                sorted_members = sorted([dict(m) for m in members], key=lambda x: (session_order.get(x['session'], 6), x['name']))
+                
+                result.append({
+                    "id": t['id'],
+                    "team_name": t['team_name'],
+                    "created_at": t['created_at'],
+                    "members": sorted_members
+                })
+            return result
+    finally:
+        conn.close()
 
 def delete_saved_team(team_id):
     conn = get_db_connection()
@@ -572,11 +580,13 @@ def delete_saved_team(team_id):
 
 def get_all_performances():
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT * FROM performances ORDER BY id DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM performances ORDER BY id DESC")
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 def create_performance(title):
     conn = get_db_connection()
@@ -597,34 +607,36 @@ def delete_performance(perf_id):
 
 def get_performance_teams_new(perf_id):
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute('''
-        SELECT st.id, st.team_name 
-        FROM performance_teams_map ptm
-        JOIN saved_teams st ON ptm.team_id = st.id
-        WHERE ptm.performance_id = %s
-    ''', (perf_id,))
-    teams = cursor.fetchall()
-    
-    result = []
-    session_order = {"보컬": 1, "기타": 2, "베이스": 3, "드럼": 4, "키보드": 5}
-    for t in teams:
-        cursor.execute('''
-            SELECT m.id, m.name, m.department, m.session 
-            FROM saved_team_members stm
-            JOIN members m ON stm.member_id = m.id
-            WHERE stm.team_id = %s
-        ''', (t['id'],))
-        members = cursor.fetchall()
-        sorted_members = sorted([dict(m) for m in members], key=lambda x: (session_order.get(x['session'], 6), x['name']))
-        
-        result.append({
-            "team_id": t['id'],
-            "team_name": t['team_name'],
-            "members": sorted_members
-        })
-    conn.close()
-    return result
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute('''
+                SELECT st.id, st.team_name 
+                FROM performance_teams_map ptm
+                JOIN saved_teams st ON ptm.team_id = st.id
+                WHERE ptm.performance_id = %s
+            ''', (perf_id,))
+            teams = cursor.fetchall()
+            
+            result = []
+            session_order = {"보컬": 1, "기타": 2, "베이스": 3, "드럼": 4, "키보드": 5}
+            for t in teams:
+                cursor.execute('''
+                    SELECT m.id, m.name, m.department, m.session 
+                    FROM saved_team_members stm
+                    JOIN members m ON stm.member_id = m.id
+                    WHERE stm.team_id = %s
+                ''', (t['id'],))
+                members = cursor.fetchall()
+                sorted_members = sorted([dict(m) for m in members], key=lambda x: (session_order.get(x['session'], 6), x['name']))
+                
+                result.append({
+                    "team_id": t['id'],
+                    "team_name": t['team_name'],
+                    "members": sorted_members
+                })
+            return result
+    finally:
+        conn.close()
 
 def set_performance_teams(perf_id, team_ids):
     conn = get_db_connection()
@@ -651,12 +663,14 @@ def create_ensemble(name, team_name, member_ids):
 
 def get_all_ensembles():
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT * FROM ensembles ORDER BY id DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
-
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM ensembles ORDER BY id DESC")
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+    finally:
+        conn.close()
+        
 def delete_ensemble_db(ensemble_id):
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -700,39 +714,20 @@ def stop_ensemble_db(ensemble_id):
 def get_active_ensembles():
     """현재 활성화된(is_active == 1) 모든 합주 목록을 반환합니다."""
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT * FROM ensembles WHERE is_active = 1")
-    rows = cursor.fetchall()
-    conn.close()
-    
-    active_list = []
-    for row in rows:
-        try:
-            ens_id = row['id']
-            name = row['name']
-            team_name = row['team_name']
-            member_ids = row['member_ids']
-            is_active = row['is_active']
-            start_time = row['start_time'] if 'start_time' in row.keys() else 0
-        except (TypeError, AttributeError, KeyError):
-            ens_id = row[0]
-            name = row[1]
-            team_name = row[2]
-            member_ids = row[3]
-            is_active = row[4]
-            start_time = row[5] if len(row) > 5 else 0
-
-        active_list.append({
-            'id': ens_id,
-            'name': name,
-            'team_name': team_name,
-            'member_ids': member_ids,
-            'is_active': is_active,
-            'start_time': start_time
-        })
-    return active_list
-
-run_init_db_once()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SELECT * FROM ensembles WHERE is_active = 1")
+            rows = cursor.fetchall()
+            return [{
+                'id': row['id'],
+                'name': row['name'],
+                'team_name': row['team_name'],
+                'member_ids': row['member_ids'],
+                'is_active': row['is_active'],
+                'start_time': row.get('start_time', 0)
+            } for row in rows]
+    finally:
+        conn.close()
 
 def separate_audio(file_path, filename):
     # 스레드 제한으로 메모리 스파이크 억제
