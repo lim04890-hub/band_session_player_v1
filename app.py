@@ -11,6 +11,8 @@ import json
 import random
 from datetime import datetime
 import imageio_ffmpeg
+import gc
+import torch
 
 # 사이드바 상단에 도움말 섹션 구성
 with st.sidebar:
@@ -740,6 +742,7 @@ def separate_audio(file_path, filename):
         "-d", "cpu",
         "-n", "htdemucs_6s",
         "--shifts=0", # 메모리 및 연산 시간 대폭 감소
+        "--segment", "7", # 세그먼트 분할 크기를 7초로 설정하여 피크 메모리 감소
         "--out", OUTPUT_DIR,
         file_path
     ]
@@ -749,6 +752,11 @@ def separate_audio(file_path, filename):
         result = subprocess.run(command, env=env, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"음원 분리 실패 (메모리 부족 또는 내부 오류). Return code: {e.returncode}\nStderr: {e.stderr}")
+    finally:
+        # 연산 종료 직후 메모리 명시적 해제 및 캐시 비우기
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     base_name = os.path.splitext(filename)[0]
     target_dir = os.path.join(OUTPUT_DIR, "htdemucs_6s", base_name)
