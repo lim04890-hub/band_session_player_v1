@@ -11,8 +11,6 @@ import json
 import random
 from datetime import datetime
 import imageio_ffmpeg
-import pandas as pd
-import streamlit as st
 
 # 사이드바 상단에 도움말 섹션 구성
 with st.sidebar:
@@ -358,11 +356,19 @@ def get_member_fresh(member_id):
 
 def get_all_active_members():
     conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    cursor.execute("SELECT * FROM members WHERE is_active = 1 ORDER BY name ASC")
-    members = cursor.fetchall()
+    if not conn: return []
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    # 애플리케이션에서 실제로 사용하는 컬럼만 명시 (예시)
+    cursor.execute("""
+        SELECT id, name, department, student_id, session, is_admin 
+        FROM members 
+        WHERE is_active = TRUE 
+        ORDER BY name ASC 
+        LIMIT 500
+    """)
+    rows = cursor.fetchall()
     conn.close()
-    return [dict(m) for m in members]
+    return [dict(row) for row in rows]
 
 def get_all_members_including_inactive():
     conn = get_db_connection()
@@ -520,7 +526,7 @@ def save_custom_team(team_name, member_ids):
             cursor.execute("INSERT INTO saved_team_members (team_id, member_id) VALUES (%s, %s)", (team_id, m_id))
         conn.commit()
         return True, "팀이 성공적으로 저장되었습니다."
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         return False, f"이미 존재하는 팀 이름입니다: {team_name}"
     except Exception as e:
         return False, f"오류 발생: {e}"
@@ -729,28 +735,32 @@ def get_active_ensembles():
 run_init_db_once()
 
 def separate_audio(file_path, filename):
+    # 스레드 제한으로 메모리 스파이크 억제
     env = os.environ.copy()
-    env["OMP_NUM_THREADS"] = "2"
-    
+    env["OMP_NUM_THREADS"] = "1" 
+
     command = [
         sys.executable,
         "-m", "demucs",
         "-d", "cpu",
         "-n", "htdemucs_6s",
+        "--shifts=0", # 메모리 및 연산 시간 대폭 감소
         "--out", OUTPUT_DIR,
         file_path
     ]
-    
-    result = subprocess.run(command, env=env, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"Demucs 실행 실패: {result.stderr}")
-        
+
+    try:
+        # subprocess의 타임아웃 방지 및 에러 캡처 적용
+        result = subprocess.run(command, env=env, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"음원 분리 실패 (메모리 부족 또는 내부 오류). Return code: {e.returncode}\nStderr: {e.stderr}")
+
     base_name = os.path.splitext(filename)[0]
     target_dir = os.path.join(OUTPUT_DIR, "htdemucs_6s", base_name)
-    
+
     if not os.path.exists(target_dir):
         raise FileNotFoundError(f"분리된 결과 폴더를 찾을 수 없습니다: {target_dir}")
-        
+
     return target_dir
 
 def process_mix(separated_dir, selected_stems, speed, start_sec, end_sec):
@@ -1700,19 +1710,12 @@ else:
                             final_dept = new_dept
                       
                         try:
-                            conn = sqlite3.connect("hertz_app_data.db")  # 사용 중인 DB 파일명에 맞게 수정
-                            cursor = conn.cursor()
-                            cursor.execute(
-                                """
-                                INSERT INTO members (name, student_id, department, session, is_admin) 
-                                VALUES (%s, %s, %s, %s, %s)
-                                """,
-                                (new_name, new_sid, final_dept, new_sess, 1 if new_is_admin else 0)
-                            )
-                            conn.commit()
-                            conn.close()
-                
-                            st.success(f"등록 완료! (이름: {new_name}, 학과: {final_dept})")
+                            success, msg = add_member(new_name, final_dept, new_sid, new_sess, new_is_admin)
+                            if success:
+                                st.success(f"등록 완료! (이름: {new_name}, 학과: {final_dept})")
+                                st.rerun()
+                            else:
+                                st.error(msg)
                             st.rerun()  # 화면을 새로고침하여 목록에 즉시 반영되도록 함
                         except Exception as e:
                             st.error(f"데이터베이스 저장 중 오류가 발생했습니다: {e}")
